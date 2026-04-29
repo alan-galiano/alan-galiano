@@ -190,7 +190,70 @@ footer{background:var(--negro);border-top:1px solid var(--gris-borde);padding:28
     <div class="stat"><div class="stat-num">⚡</div><div class="stat-label">Entrega rápida</div></div>
   </div>
 </section>
+<!-- ===== DOLOR ===== -->
+<style>
+  .fade-in {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+</style>
 
+<section id="dolor" style="background:#0a0a0a; padding:60px 20px;">
+  <div style="max-width:760px; margin:0 auto; text-align:center;">
+    <h2 class="fade-in" style="color:#F6E606; font-size:2rem; margin-bottom:40px;">¿Te pasa que...?</h2>
+
+    <div style="text-align:left; max-width:580px; margin:0 auto;">
+
+      <div class="fade-in" style="display:flex; align-items:flex-start; gap:16px; margin-bottom:24px; padding:20px; background:#111; border-radius:10px; border-left:4px solid #F6E606;">
+        <span style="color:#F6E606; font-size:1.4rem;">❌</span>
+        <p style="color:#ccc; margin:0; font-size:1.05rem; line-height:1.6;">¿Te quedaste sin gas un <strong style="color:#fff;">domingo o feriado?</strong></p>
+      </div>
+
+      <div class="fade-in" style="display:flex; align-items:flex-start; gap:16px; margin-bottom:24px; padding:20px; background:#111; border-radius:10px; border-left:4px solid #F6E606;">
+        <span style="color:#F6E606; font-size:1.4rem;">❌</span>
+        <p style="color:#ccc; margin:0; font-size:1.05rem; line-height:1.6;">¿Te quedás sin gas <strong style="color:#fff;">fuera de horario?</strong></p>
+      </div>
+
+      <div class="fade-in" style="display:flex; align-items:flex-start; gap:16px; margin-bottom:24px; padding:20px; background:#111; border-radius:10px; border-left:4px solid #F6E606;">
+        <span style="color:#F6E606; font-size:1.4rem;">❌</span>
+        <p style="color:#ccc; margin:0; font-size:1.05rem; line-height:1.6;">¿Tuviste que esperar <strong style="color:#fff;">todo el día</strong> sin saber cuándo llegaba el pedido?</p>
+      </div>
+
+      <div class="fade-in" style="display:flex; align-items:flex-start; gap:16px; margin-bottom:24px; padding:20px; background:#111; border-radius:10px; border-left:4px solid #F6E606;">
+        <span style="color:#F6E606; font-size:1.4rem;">❌</span>
+        <p style="color:#ccc; margin:0; font-size:1.05rem; line-height:1.6;">¿Tu garrafa se terminó <strong style="color:#fff;">justo cuando más la necesitabas?</strong></p>
+      </div>
+
+      <div class="fade-in" style="display:flex; align-items:flex-start; gap:16px; margin-bottom:40px; padding:20px; background:#111; border-radius:10px; border-left:4px solid #F6E606;">
+        <span style="color:#F6E606; font-size:1.4rem;">❌</span>
+        <p style="color:#ccc; margin:0; font-size:1.05rem; line-height:1.6;">¿Necesitás <strong style="color:#fff;">alguien de confianza</strong> que puedas dejar entrar a tu casa?</p>
+      </div>
+
+    </div>
+
+    <p class="fade-in" style="color:#F6E606; font-size:1.2rem; font-weight:bold; margin:0;">Si te identificás con alguna de estas situaciones,<br>yo soy la solución que estabas buscando.</p>
+
+  </div>
+</section>
+
+<script>
+  const fadeEls = document.querySelectorAll('.fade-in');
+  const observer2 = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer2.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15 });
+  fadeEls.forEach(el => observer2.observe(el));
+</script>
+<!-- ===== FIN DOLOR ===== -->
 <!-- SOBRE MÍ -->
 <section style="background:var(--gris);padding:64px 24px;">
   <div style="max-width:900px;margin:0 auto;display:flex;gap:40px;align-items:center;flex-wrap:wrap;">
