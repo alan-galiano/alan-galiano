@@ -698,5 +698,23 @@ window.addEventListener('load', () => {
 });
 
 </script>
+<script>
+  const allSections = document.querySelectorAll('section');
+  allSections.forEach(section => {
+    section.style.opacity = '0';
+    section.style.transform = 'translateY(30px)';
+    section.style.transition = 'opacity 0.8s ease, transform 0.8s ease';
+  });
+  const sectionObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.style.opacity = '1';
+        entry.target.style.transform = 'translateY(0)';
+        sectionObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1 });
+  allSections.forEach(section => sectionObserver.observe(section));
+</script>
  </body>
 </html>
