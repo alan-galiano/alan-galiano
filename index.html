@@ -399,6 +399,28 @@ footer{background:var(--negro);border-top:1px solid var(--gris-borde);padding:28
 </section>
 <!-- FORMULARIO -->
 <!-- ===== GASTRONOMICOS ===== -->
+
+<!-- ===== LIO: CALCULADORA DE DURACION ===== -->
+<section id="calculadora" style="background:#0d0d0d;padding:60px 20px;text-align:center;">
+  <div style="max-width:680px;margin:0 auto;">
+    <div class="sec-title">¿Cuánto te dura <em>una garrafa</em>?</div>
+    <p style="color:var(--texto-suave);font-size:14px;margin:6px 0 28px;">Contestá estas 2 preguntas y te digo cuál te conviene 👇</p>
+    <div style="text-align:left;margin-bottom:18px;">
+      <div style="color:var(--dorado);font-weight:800;font-size:14px;margin-bottom:10px;">1. ¿Cuántos son en casa?</div>
+      <div class="lio-opts" id="lioPersonas">
+        <button class="lio-opt" data-v="1">1-2</button><button class="lio-opt" data-v="1.35">3-4</button><button class="lio-opt" data-v="1.7">5 o más</button>
+      </div>
+    </div>
+    <div style="text-align:left;margin-bottom:22px;">
+      <div style="color:var(--dorado);font-weight:800;font-size:14px;margin-bottom:10px;">2. ¿Para qué usás el gas?</div>
+      <div class="lio-opts" id="lioUso">
+        <button class="lio-opt" data-v="0.22">Solo cocina</button><button class="lio-opt" data-v="0.55">Cocina + calefón</button><button class="lio-opt" data-v="1.05">Cocina + calefón + estufa</button>
+      </div>
+    </div>
+    <div id="lioResultado" style="display:none;"></div>
+  </div>
+</section>
+<!-- ===== FIN CALCULADORA ===== -->
 <section id="gastronomicos" style="background:#111; padding:40px 20px;">
   <div style="max-width:760px; margin:0 auto; text-align:center;">
     <p style="color:#ccc; font-size:1.2rem; margin-bottom:20px;">Si tenés un comercio o emprendimiento gastronómico, tengo <strong style="color:#F6E606;">precios especiales</strong> para vos.</p>
@@ -755,5 +777,98 @@ window.addEventListener('load', () => {
   }, { threshold: 0.1 });
   allSections.forEach(section => sectionObserver.observe(section));
 </script>
- </body>
+ 
+<!-- ===== LIO: ESTILOS Y FUNCIONES NUEVAS (aditivo) ===== -->
+<style>
+/* Calculadora */
+.lio-opts{display:flex;gap:8px;flex-wrap:wrap;}
+.lio-opt{flex:1;min-width:90px;background:var(--gris-med);border:1px solid var(--gris-borde);color:#ccc;padding:13px 10px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit;}
+.lio-opt:hover{border-color:var(--dorado);}
+.lio-opt.sel{background:var(--dorado);color:var(--negro);border-color:var(--dorado);transform:scale(1.04);}
+.lio-res{background:var(--gris-med);border:1px solid var(--dorado);border-radius:14px;padding:22px;animation:fadeUp .5s ease;}
+.lio-res-dias{display:flex;gap:10px;justify-content:center;margin:14px 0;flex-wrap:wrap;}
+.lio-res-card{background:var(--negro);border:1px solid var(--gris-borde);border-radius:10px;padding:12px 16px;min-width:88px;}
+.lio-res-card.lio-best{border-color:var(--dorado);box-shadow:0 0 18px rgba(246,230,6,.25);}
+.lio-res-kg{font-size:12px;color:var(--texto-suave);font-weight:700;}
+.lio-res-d{font-size:22px;color:var(--dorado);font-weight:900;}
+.lio-res-cta{display:inline-block;margin-top:14px;background:var(--dorado);color:var(--negro);font-weight:900;padding:13px 26px;border-radius:10px;text-decoration:none;font-size:14px;}
+/* Reseñas estilo WhatsApp */
+.resena-card{background:#202c33 !important;border:none !important;border-radius:12px 12px 12px 4px !important;text-align:left !important;position:relative;opacity:0;transform:translateY(18px);transition:opacity .5s ease,transform .5s ease;}
+.resena-card.lio-in{opacity:1;transform:translateY(0);}
+.resena-card > div:last-child{color:#25D366 !important;}
+.resena-card > div:last-child::after{content:'  ✓✓';color:#53bdeb;font-size:12px;letter-spacing:-2px;}
+/* Barra fija estado + urgencia */
+.lio-bar{position:fixed;bottom:0;left:0;right:0;background:#0c0c0c;border-top:2px solid var(--dorado);padding:10px 14px;display:flex;align-items:center;justify-content:center;gap:12px;z-index:998;box-shadow:0 -4px 20px rgba(0,0,0,.6);}
+.lio-bar-txt{font-size:12.5px;color:#ddd;font-weight:700;line-height:1.3;}
+.lio-bar-cta{background:#25D366;color:#fff;font-weight:900;font-size:13px;padding:10px 16px;border-radius:24px;text-decoration:none;white-space:nowrap;animation:pulse-glow 2.5s ease infinite;}
+.lio-bar-x{background:none;border:none;color:var(--texto-suave);font-size:18px;cursor:pointer;padding:4px;line-height:1;}
+body{padding-bottom:64px;}
+.notif{bottom:84px !important;}
+@media(max-width:480px){.lio-bar-txt{font-size:11.5px;}.lio-bar-cta{font-size:12px;padding:9px 13px;}}
+</style>
+<div class="lio-bar" id="lioBar">
+  <span class="lio-bar-txt" id="lioEstado"></span>
+  <a class="lio-bar-cta" id="lioBarCta" href="#" target="_blank" rel="noopener">WhatsApp</a>
+  <button class="lio-bar-x" onclick="document.getElementById('lioBar').style.display='none';document.body.style.paddingBottom='0'" aria-label="Cerrar">✕</button>
+</div>
+<script>
+(function(){
+  /* --- Estado en vivo (horario real: 7 a 20, todos los días) --- */
+  var h = new Date().getHours();
+  var abierto = (h >= 7 && h < 20);
+  var est = document.getElementById('lioEstado');
+  var cta = document.getElementById('lioBarCta');
+  var TEL = '5493425331010';
+  if (abierto) {
+    est.innerHTML = '🟢 <b>Disponible ahora</b> · ¿Sin gas? Te respondo en minutos';
+    cta.textContent = '🚨 Pedido urgente';
+    cta.href = 'https://wa.me/' + TEL + '?text=' + encodeURIComponent('Hola Alan! Me quedé sin gas, necesito un pedido urgente 🙏');
+  } else {
+    est.innerHTML = '🌙 Escribime y te respondo <b>a partir de las 7</b>';
+    cta.textContent = 'Dejar mi pedido';
+    cta.href = 'https://wa.me/' + TEL + '?text=' + encodeURIComponent('Hola Alan! Te dejo mi pedido para mañana:');
+  }
+  /* --- Reseñas estilo WhatsApp: entrada escalonada --- */
+  var cards = document.querySelectorAll('.resena-card');
+  if ('IntersectionObserver' in window && cards.length) {
+    var obs = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (e.isIntersecting) {
+          var i = Array.prototype.indexOf.call(cards, e.target);
+          setTimeout(function(){ e.target.classList.add('lio-in'); }, i * 180);
+          obs.unobserve(e.target);
+        }
+      });
+    }, {threshold: 0.2});
+    cards.forEach(function(c){ obs.observe(c); });
+  } else { cards.forEach(function(c){ c.classList.add('lio-in'); }); }
+  /* --- Calculadora --- */
+  var pers = null, uso = null;
+  function pick(contId, cb){
+    var cont = document.getElementById(contId);
+    if (!cont) return;
+    cont.addEventListener('click', function(ev){
+      var b = ev.target.closest('.lio-opt'); if (!b) return;
+      cont.querySelectorAll('.lio-opt').forEach(function(x){ x.classList.remove('sel'); });
+      b.classList.add('sel'); cb(parseFloat(b.dataset.v)); calc();
+    });
+  }
+  pick('lioPersonas', function(v){ pers = v; });
+  pick('lioUso', function(v){ uso = v; });
+  function calc(){
+    if (pers === null || uso === null) return;
+    var rate = pers * uso;
+    var d10 = Math.round(10/rate), d15 = Math.round(15/rate), d45 = Math.round(45/rate);
+    var best = d10 >= 25 ? 10 : (d15 >= 25 ? 15 : 45);
+    var R = document.getElementById('lioResultado');
+    function card(kg, d){
+      return '<div class="lio-res-card' + (kg===best?' lio-best':'') + '"><div class="lio-res-kg">Garrafa ' + kg + 'kg' + (kg===best?' ⭐':'') + '</div><div class="lio-res-d">~' + d + '</div><div class="lio-res-kg">días</div></div>';
+    }
+    R.innerHTML = '<div class="lio-res"><div style="font-size:15px;color:#fff;font-weight:800;">Para tu casa, te recomiendo la de <span style="color:var(--dorado);">' + best + 'kg</span> 👌</div><div class="lio-res-dias">' + card(10,d10) + card(15,d15) + card(45,d45) + '</div><div style="font-size:11px;color:var(--texto-suave);">*Estimación según uso promedio. Garrafas bien cargadas, peso completo.</div><br><a class="lio-res-cta" href="#pedido">🛒 Pedir la de ' + best + 'kg</a></div>';
+    R.style.display = 'block';
+  }
+})();
+</script>
+<!-- ===== FIN BLOQUE LIO ===== -->
+</body>
 </html>
