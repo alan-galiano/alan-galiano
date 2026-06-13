@@ -408,13 +408,13 @@ footer{background:var(--negro);border-top:1px solid var(--gris-borde);padding:28
     <div style="text-align:left;margin-bottom:18px;">
       <div style="color:var(--dorado);font-weight:800;font-size:14px;margin-bottom:10px;">1. ¿Cuántos son en casa?</div>
       <div class="lio-opts" id="lioPersonas">
-        <button class="lio-opt" data-v="1">1-2</button><button class="lio-opt" data-v="1.35">3-4</button><button class="lio-opt" data-v="1.7">5 o más</button>
+        <button class="lio-opt" data-v="p1">1-2</button><button class="lio-opt" data-v="p2">3-4</button><button class="lio-opt" data-v="p3">5 o más</button>
       </div>
     </div>
     <div style="text-align:left;margin-bottom:22px;">
       <div style="color:var(--dorado);font-weight:800;font-size:14px;margin-bottom:10px;">2. ¿Para qué usás el gas?</div>
       <div class="lio-opts" id="lioUso">
-        <button class="lio-opt" data-v="0.22">Solo cocina</button><button class="lio-opt" data-v="0.55">Cocina + calefón</button><button class="lio-opt" data-v="1.05">Cocina + calefón + estufa</button>
+        <button class="lio-opt" data-v="u1">Solo cocina</button><button class="lio-opt" data-v="u2">Cocina + calefón</button><button class="lio-opt" data-v="u3">Cocina + calefón + estufa</button>
       </div>
     </div>
     <div id="lioResultado" style="display:none;"></div>
@@ -842,7 +842,18 @@ body{padding-bottom:64px;}
     }, {threshold: 0.2});
     cards.forEach(function(c){ obs.observe(c); });
   } else { cards.forEach(function(c){ c.classList.add('lio-in'); }); }
-  /* --- Calculadora --- */
+  /* --- Calculadora (tabla calibrada con datos reales de Alan) --- */
+  var TABLA = {
+    p1u1: { d10:'~45 días', d15:'~65 días', d45:'8-12 meses', rec:10 },
+    p1u2: { d10:'~14 días', d15:'~21 días', d45:'~3 meses',   rec:15 },
+    p1u3: { d10:null,       d15:null,       d45:'6-7 semanas', rec:45 },
+    p2u1: { d10:'30-35 días', d15:'~50 días', d45:'6+ meses', rec:10 },
+    p2u2: { d10:'~10 días', d15:'~15 días', d45:'2-3 meses',  rec:45 },
+    p2u3: { d10:null,       d15:null,       d45:'5-6 semanas', rec:45 },
+    p3u1: { d10:'~25 días', d15:'~38 días', d45:'~5 meses',   rec:10 },
+    p3u2: { d10:'~8 días',  d15:'~12 días', d45:'~2 meses',   rec:45 },
+    p3u3: { d10:null,       d15:null,       d45:'~33 días',   rec:45 }
+  };
   var pers = null, uso = null;
   function pick(contId, cb){
     var cont = document.getElementById(contId);
@@ -850,21 +861,26 @@ body{padding-bottom:64px;}
     cont.addEventListener('click', function(ev){
       var b = ev.target.closest('.lio-opt'); if (!b) return;
       cont.querySelectorAll('.lio-opt').forEach(function(x){ x.classList.remove('sel'); });
-      b.classList.add('sel'); cb(parseFloat(b.dataset.v)); calc();
+      b.classList.add('sel'); cb(b.dataset.v); calc();
     });
   }
   pick('lioPersonas', function(v){ pers = v; });
   pick('lioUso', function(v){ uso = v; });
   function calc(){
-    if (pers === null || uso === null) return;
-    var rate = pers * uso;
-    var d10 = Math.round(10/rate), d15 = Math.round(15/rate), d45 = Math.round(45/rate);
-    var best = d10 >= 25 ? 10 : (d15 >= 25 ? 15 : 45);
-    var R = document.getElementById('lioResultado');
+    if (!pers || !uso) return;
+    var t = TABLA[pers + uso];
     function card(kg, d){
-      return '<div class="lio-res-card' + (kg===best?' lio-best':'') + '"><div class="lio-res-kg">Garrafa ' + kg + 'kg' + (kg===best?' ⭐':'') + '</div><div class="lio-res-d">~' + d + '</div><div class="lio-res-kg">días</div></div>';
+      if (d === null) {
+        return '<div class="lio-res-card" style="opacity:.75;"><div class="lio-res-kg" style="text-decoration:line-through;">Garrafa ' + kg + 'kg</div><div style="font-size:13px;color:#ef5350;font-weight:800;padding:6px 0;">⚠️ No recomendable</div><div class="lio-res-kg">no alcanza la presión<br>para tanto consumo</div></div>';
+      }
+      var best = (kg === t.rec);
+      var nom = (kg === 45) ? 'Cilindro 45kg' : 'Garrafa ' + kg + 'kg';
+      return '<div class="lio-res-card' + (best ? ' lio-best' : '') + '"><div class="lio-res-kg">' + nom + (best ? ' ⭐' : '') + '</div><div class="lio-res-d" style="font-size:17px;padding:6px 0;">' + d + '</div></div>';
     }
-    R.innerHTML = '<div class="lio-res"><div style="font-size:15px;color:#fff;font-weight:800;">Para tu casa, te recomiendo la de <span style="color:var(--dorado);">' + best + 'kg</span> 👌</div><div class="lio-res-dias">' + card(10,d10) + card(15,d15) + card(45,d45) + '</div><div style="font-size:11px;color:var(--texto-suave);">*Estimación según uso promedio. Garrafas bien cargadas, peso completo.</div><br><a class="lio-res-cta" href="#pedido">🛒 Pedir la de ' + best + 'kg</a></div>';
+    var nomRec = (t.rec === 45) ? 'el cilindro de 45kg' : 'la de ' + t.rec + 'kg';
+    var presion = (uso === 'u3') ? '<div style="font-size:12.5px;color:#ddd;background:#1a1a1a;border-left:3px solid #ef5350;padding:10px 12px;border-radius:6px;text-align:left;margin:12px 0;">💡 <b>Dato de experto:</b> con calefón + estufa funcionando, las garrafas chicas no logran entregar el gas a la presión que necesitás. Por eso para tu consumo va sí o sí el cilindro de 45kg.</div>' : '';
+    var R = document.getElementById('lioResultado');
+    R.innerHTML = '<div class="lio-res"><div style="font-size:15px;color:#fff;font-weight:800;">Para tu casa, te recomiendo <span style="color:var(--dorado);">' + nomRec + '</span> 👌</div><div class="lio-res-dias">' + card(10, t.d10) + card(15, t.d15) + card(45, t.d45) + '</div>' + presion + '<div style="font-size:13px;color:#f0f0f0;background:#1a1a1a;border:1px dashed var(--dorado);padding:12px 14px;border-radius:8px;margin:6px 0 2px;">📌 <b>Son números estimados según el uso promedio</b> — cada casa es distinta. ¿Tenés dudas de cuál te conviene? <a href="https://wa.me/5493425331010?text=' + encodeURIComponent('Hola Alan! Usé la calculadora de tu web y quiero que me ayudes a elegir la garrafa') + '" target="_blank" rel="noopener" style="color:#25D366;font-weight:800;text-decoration:none;">Escribime y lo vemos juntos 👍</a></div><br><a class="lio-res-cta" href="#pedido">🛒 Pedir ' + nomRec + '</a></div>';
     R.style.display = 'block';
   }
 })();
