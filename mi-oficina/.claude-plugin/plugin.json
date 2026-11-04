@@ -1,0 +1,10 @@
+{
+  "name": "mi-oficina",
+  "version": "0.1.0",
+  "description": "La Oficina: cinco agentes reciben a un negocio, lo investigan, lo diagnostican y le diseñan su equipo de agentes, en vivo",
+  "types": "./types/index.d.ts",
+  "license": "MIT",
+  "author": {
+    "name": "Alan Galiano"
+  }
+}
