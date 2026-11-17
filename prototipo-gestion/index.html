@@ -135,6 +135,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--negro);b
 .seccion-tit h2{margin:0}
 .cod{display:inline-block;font-family:ui-monospace,Menlo,Consolas,monospace;background:var(--negro);color:var(--amarillo);padding:1px 7px;border-radius:6px;font-weight:700;font-size:13px;vertical-align:1px}
 .tag.cat-comercio{background:#e6eefb;color:#1f4fa3}
+.tag.cat-gastro{background:#ffe9e0;color:#a33a12}
 .tag.cat-subdist{background:#efe6fb;color:#5b2aa3}
 .tag.cat-esp{background:#ffe9d6;color:#9a4a00}
 .deuda{color:var(--rojo);font-weight:800}
@@ -240,26 +241,26 @@ const fmtHoras = h => { const t = Math.round(h * 60); return Math.floor(t / 60) 
 function datosEjemplo() {
   const S = {
     clientes: [
-      [101,'Panadería La Espiga','Av. Principal 1450','342 555-0101','comercio'],
+      [101,'Panadería La Espiga','Av. Principal 1450','342 555-0101','gastro'],
       [102,'Almacén Don Pedro','San Martín 820','342 555-0102','comercio'],
       [105,'María González','Belgrano 2311','','final'],
       [108,'Juan Pérez','Rivadavia 455','342 555-0104','final'],
       [110,'Club Social Barrio Norte','Las Heras 3100','','comercio'],
-      [114,'Rotisería El Buen Sabor','Mitre 1789','342 555-0106','comercio'],
+      [114,'Rotisería El Buen Sabor','Mitre 1789','342 555-0106','gastro'],
       [117,'Carlos Rodríguez','Moreno 902','','final'],
       [121,'Laura Fernández','Sarmiento 1555','342 555-0108','final'],
       [125,'Kiosco La Esquina','Urquiza 300','','comercio'],
       [130,'Escuela N° 12','Pasaje Los Álamos 45','','comercio'],
       [133,'Hugo Martínez','Alvear 2700','342 555-0111','final'],
-      [140,'Comedor Los Peques','Colón 640','','comercio'],
+      [140,'Comedor Los Peques','Colón 640','','gastro'],
       [144,'Silvia Romero','Lavalle 1230','','final'],
-      [150,'Parrilla Don Tito','Av. Costanera 5100','342 555-0114','comercio'],
+      [150,'Parrilla Don Tito','Av. Costanera 5100','342 555-0114','gastro'],
       [155,'Ana López','Belgrano 3480','342 555-0115','final'],
       [158,'Roberto Díaz','San Martín 2210','','final'],
       [162,'Marta Suárez','Urquiza 1875','342 555-0117','final'],
       [166,'Jorge Benítez','Moreno 3320','','final'],
       [170,'Lucía Torres','Rivadavia 1290','','final'],
-      [175,'Pollería El Gallo','Mitre 455','342 555-0120','comercio'],
+      [175,'Pollería El Gallo','Mitre 455','342 555-0120','gastro'],
       [180,'Despensa Mi Barrio','Las Heras 980','','comercio'],
       [201,'Subdistribuidor Norte','Ruta 11 km 4','342 555-0201','subdist'],
       [202,'Gas Las Flores','Av. Blas Parera 7400','342 555-0202','subdist'],
@@ -276,7 +277,7 @@ function datosEjemplo() {
       {id:'g45', nombre:'Cilindro 45 kg', precio:114990, envase:true},
       {id:'c15', nombre:'Clark 15 kg (autoelevador)', precio:52990, envase:true},
     ],
-    listas: {comercio:{g10:29990, g15:43990, g45:104990, c15:48990}, subdist:{g10:26500, g15:38900, g45:94000, c15:44500}},
+    listas: {comercio:{g10:29990, g15:43990, g45:104990, c15:48990}, gastro:{g10:30990, g15:44990, g45:107990, c15:49990}, subdist:{g10:26500, g15:38900, g45:94000, c15:44500}},
     empleados: [
       {id:nid(), nombre:'Ramón (chofer)', valorHora:5200, chofer:true},
       {id:nid(), nombre:'Diego (chofer)', valorHora:5200, chofer:true},
@@ -304,7 +305,7 @@ function datosEjemplo() {
     if (new Date(f + 'T12:00:00').getDay() === 0) continue;
     const nv = k === 0 ? 4 : 7 + Math.floor(rnd() * 7);
     for (let i = 0; i < nv; i++) {
-      const c = pick(S.clientes), sub = c.categoria === 'subdist', com = c.categoria === 'comercio';
+      const c = pick(S.clientes), sub = c.categoria === 'subdist', com = c.categoria === 'comercio' || c.categoria === 'gastro';
       const m = sub ? 8 : 1, items = [], p = rnd();
       if (p < .55) items.push({p:'g10', c:(1 + Math.floor(rnd() * 3)) * m});
       else if (p < .85) items.push({p:'g15', c:(1 + Math.floor(rnd() * 2)) * m});
@@ -328,6 +329,14 @@ function datosEjemplo() {
     }
   }
   S.gastos.forEach(g => { if (g.tipo === 'Combustible') g.monto = g.litros * 1450; });
+  // Kilometraje de ejemplo en cada carga de combustible
+  S.vehiculos.forEach((v, i) => {
+    let odo = [85200, 142600][i] || 50000, prev = null;
+    S.gastos.filter(g => g.veh === v.id && g.tipo === 'Combustible').sort((a, b) => a.fecha.localeCompare(b.fecha)).forEach(g => {
+      if (prev) odo += Math.round((new Date(g.fecha) - new Date(prev)) / 864e5) * (45 + Math.floor(rnd() * 45));
+      g.odo = odo; prev = g.fecha;
+    });
+  });
   // Cobros de ejemplo: cada cliente pagó una parte de lo que compró a cuenta
   S.clientes.forEach((c, i) => {
     const deuda = S.ventas.filter(v => v.cliente === c.id).reduce((a, v) => a + ccDe(v), 0);
@@ -361,9 +370,10 @@ function pagosTxt(v) {
 }
 
 /* ===================== Clientes: datos ===================== */
-const CATS = [{id:'final', nombre:'Consumidor final'}, {id:'comercio', nombre:'Comercio'}, {id:'subdist', nombre:'Subdistribuidor'}];
+const CATS = [{id:'comercio', nombre:'Comercio'}, {id:'gastro', nombre:'Gastronómico'}, {id:'subdist', nombre:'Subdistribuidor'}, {id:'final', nombre:'Usuario'}];
 function migrar(S) {
   S.listas ||= {comercio:{}, subdist:{}};
+  S.listas.gastro ||= {...(S.listas.comercio || {})};
   S.clientes.forEach((c, i) => {
     if (c.codigo == null) c.codigo = 101 + i;
     c.categoria ||= 'final'; c.precios ||= {};
@@ -507,7 +517,7 @@ function ir() {
 window.addEventListener('hashchange', ir);
 
 /* ===================== Clientes: funciones ===================== */
-const catNombre = id => (CATS.find(c => c.id === id) || CATS[0]).nombre;
+const catNombre = id => (CATS.find(c => c.id === id) || CATS[3]).nombre;
 const tagCat = c => c.categoria === 'final' ? '' : `<span class="tag cat-${c.categoria}">${catNombre(c.categoria)}</span>`;
 const ventasOk = () => S.ventas.filter(v => !v.anulada);
 function precioPara(c, pid) {
@@ -588,7 +598,7 @@ function nuevoCliente(texto, despues) {
   const m = modal(`<h2>Cliente nuevo</h2>
     <div class="fila"><div style="flex:0 0 110px;min-width:0"><label class="campo">Código</label><input type="number" id="ncC" value="${esCod ? esc(texto.trim()) : sigCodigo()}"></div><div><label class="campo">Nombre</label><input type="text" id="ncN" value="${esCod ? '' : esc(texto)}"></div></div>
     <div class="fila" style="margin-top:12px"><div><label class="campo">Dirección</label><input type="text" id="ncD"></div><div><label class="campo">Teléfono</label><input type="text" id="ncT"></div></div>
-    <div style="margin-top:12px"><label class="campo">Tipo de cliente (define el precio)</label><select id="ncK">${CATS.map(k => `<option value="${k.id}">${k.nombre}</option>`).join('')}</select></div>
+    <div style="margin-top:12px"><label class="campo">Tipo de cliente (define el precio)</label><select id="ncK">${CATS.map(k => `<option value="${k.id}" ${k.id === 'final' ? 'selected' : ''}>${k.nombre}</option>`).join('')}</select></div>
     <div class="fila" style="margin-top:18px"><button class="btn" id="ncNo">Cancelar</button><button class="btn prim" id="ncSi">Guardar cliente</button></div>`);
   m.querySelector(esCod || texto ? (esCod ? '#ncN' : '#ncD') : '#ncN').focus();
   m.querySelector('#ncNo').onclick = cerrarModal;
@@ -934,7 +944,7 @@ function vistaClientes() {
     <div class="card">
       <div class="fila" style="align-items:center"><div style="flex:3;min-width:220px"><input type="search" id="cQ" placeholder="🔎 Código, nombre, dirección, número o teléfono…" value="${esc(C.q)}" autocomplete="off"></div>
         <div style="flex:0 0 auto;display:flex;gap:8px;flex-wrap:wrap"><button class="btn prim" id="cNuevo">+ Cliente nuevo</button><button class="btn" id="cImp">📥 Importar listado</button><button class="btn" id="cRep">🔍 Revisar repetidos${nRep ? ' (' + nRep + ')' : ''}</button></div></div>
-      <div class="chips" style="margin-top:12px" id="cFil">${[['todos','Todos'],['deuda','Los que deben'],['final','Consumidor final'],['comercio','Comercios'],['subdist','Subdistribuidores']].map(([k, t]) => `<button class="chip ${C.filtro === k ? 'on' : ''}" data-f="${k}">${t}</button>`).join('')}</div>
+      <div class="chips" style="margin-top:12px" id="cFil">${[['todos','Todos'],['deuda','Los que deben'],['comercio','Comercios'],['gastro','Gastronómicos'],['subdist','Subdistribuidores'],['final','Usuarios']].map(([k, t]) => `<button class="chip ${C.filtro === k ? 'on' : ''}" data-f="${k}">${t}</button>`).join('')}</div>
       <div id="cLista" style="margin-top:14px"></div>
     </div>`;
   const q = $('#cQ');
@@ -1325,7 +1335,7 @@ function fDatos(c, re) {
 }
 
 /* ===================== GASTOS ===================== */
-const TIPOS_GASTO = ['Combustible','Mantenimiento','Peaje','Lavado','Repuestos','Otro'];
+const TIPOS_GASTO = ['Combustible','Mantenimiento','Peaje','Lavado','Repuestos','Otro','Solo kilometraje'];
 const G = { fecha: hoy(), tipo: 'Combustible' };
 function vistaGastos() {
   $('#main').innerHTML = `
@@ -1340,9 +1350,10 @@ function vistaGastos() {
           <div><label class="campo">Fecha</label><input type="date" id="gFecha" value="${G.fecha}"></div>
           <div><label class="campo">Vehículo</label><select id="gVeh"><option value="">— Ninguno —</option>${S.vehiculos.map(v => `<option value="${v.id}">${esc(v.nombre)}</option>`).join('')}</select></div>
         </div>
+        <div style="margin-top:12px" id="gOdoBox"><label class="campo">Kilometraje del vehículo (lo que marca el tablero)</label><input type="number" id="gOdo" min="0" inputmode="numeric" placeholder="Ej: 145230"><div class="muted" id="gOdoUlt" style="font-size:13px;margin-top:4px"></div></div>
         <div class="fila" style="margin-top:12px">
           <div id="gLitrosBox"><label class="campo">Litros</label><input type="number" id="gLitros" min="0" step="0.1" inputmode="decimal"></div>
-          <div><label class="campo">Monto pagado ($)</label><input type="number" id="gMonto" min="0" step="1" inputmode="numeric"></div>
+          <div id="gMontoBox"><label class="campo">Monto pagado ($)</label><input type="number" id="gMonto" min="0" step="1" inputmode="numeric"></div>
         </div>
         <div class="fila" style="margin-top:12px">
           <div><label class="campo">Quién lo hizo</label><select id="gChofer"><option value="">—</option>${S.empleados.map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join('')}</select></div>
@@ -1351,26 +1362,68 @@ function vistaGastos() {
         <div style="margin-top:18px"><button class="btn prim grande" id="gGuardar">✓ Guardar gasto</button></div>
       </div>
       <div class="card"><div id="gLista"></div></div>
-    </div>`;
+    </div>
+    <div class="card" id="gKm"></div>`;
   if (S.vehiculos[0]) $('#gVeh').value = S.vehiculos[0].id;
-  $('#gFecha').onchange = e => { G.fecha = e.target.value || hoy(); gLista(); };
+  $('#gVeh').onchange = gOdoUlt;
+  $('#gFecha').onchange = e => { G.fecha = e.target.value || hoy(); gLista(); gKm(); };
   $('#gGuardar').onclick = guardarGasto;
-  gTipos(); gLista();
+  gTipos(); gLista(); gKm(); gOdoUlt();
+}
+function ultimoKm(vid, antesDe) {
+  return S.gastos.filter(g => g.veh === vid && num(g.odo) > 0 && (!antesDe || g.fecha <= antesDe)).sort((a, b) => a.fecha.localeCompare(b.fecha) || num(a.odo) - num(b.odo)).pop();
+}
+function gOdoUlt() {
+  const box = $('#gOdoUlt'), vid = $('#gVeh').value;
+  $('#gOdoBox').style.display = vid ? '' : 'none';
+  const u = vid && ultimoKm(vid);
+  box.textContent = u ? `Última carga: ${num(u.odo).toLocaleString('es-AR')} km (${fmtFecha(u.fecha)})` : vid ? 'Todavía no hay kilometraje cargado para este vehículo.' : '';
+}
+function gKm() {
+  const m = mesDe(G.fecha), ini = m + '-01', fin = m + '-31';
+  const filas = S.vehiculos.map(v => {
+    const gs = S.gastos.filter(g => g.veh === v.id && mesDe(g.fecha) === m);
+    const comb = gs.filter(g => g.tipo === 'Combustible').reduce((a, g) => a + g.monto, 0);
+    const otros = gs.filter(g => g.tipo !== 'Combustible').reduce((a, g) => a + g.monto, 0);
+    const litros = gs.reduce((a, g) => a + num(g.litros), 0);
+    const lecturas = S.gastos.filter(g => g.veh === v.id && num(g.odo) > 0 && g.fecha <= fin).sort((a, b) => a.fecha.localeCompare(b.fecha) || num(a.odo) - num(b.odo));
+    const antes = lecturas.filter(g => g.fecha < ini).pop(), enMes = lecturas.filter(g => g.fecha >= ini);
+    const desde = antes || enMes[0], hasta = enMes[enMes.length - 1];
+    const km = desde && hasta ? num(hasta.odo) - num(desde.odo) : 0;
+    return {v, comb, otros, total: comb + otros, litros, km};
+  });
+  const tot = filas.reduce((a, f) => ({km:a.km + f.km, total:a.total + (f.km > 0 ? f.total : 0)}), {km:0, total:0});
+  $('#gKm').innerHTML = `<div class="seccion-tit"><h2>🚚 ¿Cuánto sale el km de cada vehículo? — ${esc(nombreMes(m))}</h2></div>
+    <div class="scroll"><table class="tabla"><thead><tr><th>Vehículo</th><th class="num">Km recorridos</th><th class="num">Combustible</th><th class="num">Otros gastos</th><th class="num">Total</th><th class="num">Costo por km</th><th class="num">Consumo</th></tr></thead><tbody>
+    ${filas.map(f => `<tr><td><b>${esc(f.v.nombre)}</b></td>
+      <td class="num">${f.km > 0 ? f.km.toLocaleString('es-AR') + ' km' : '<span class="muted">sin km</span>'}</td>
+      <td class="num">${money(f.comb)}</td><td class="num">${money(f.otros)}</td><td class="num">${money(f.total)}</td>
+      <td class="num">${f.km > 0 ? `<b style="font-size:18px">${money(f.total / f.km)}</b><div class="muted" style="font-size:12px">combustible ${money(f.comb / f.km)}</div>` : '—'}</td>
+      <td class="num">${f.km > 0 && f.litros ? (f.litros / f.km * 100).toLocaleString('es-AR', {maximumFractionDigits:1}) + ' L/100 km' : '—'}</td></tr>`).join('') || `<tr><td colspan="7" class="vacio">No hay vehículos cargados. Agregalos en Datos.</td></tr>`}
+    </tbody>${tot.km > 0 ? `<tfoot><tr><td>Toda la flota</td><td class="num">${tot.km.toLocaleString('es-AR')} km</td><td></td><td></td><td class="num">${money(tot.total)}</td><td class="num">${money(tot.total / tot.km)}</td><td></td></tr></tfoot>` : ''}</table></div>
+    <p class="muted" style="font-size:13px;margin-bottom:0">Se calcula con el kilometraje del tablero que se carga junto con el combustible (o con “Solo kilometraje”). Costo por km = todos los gastos del vehículo en el mes ÷ km recorridos. Los vehículos se agregan o cambian en <a href="#datos">Datos</a>.</p>`;
 }
 function gTipos() {
   $('#gTipos').innerHTML = TIPOS_GASTO.map(t => `<button class="chip ${G.tipo === t ? 'on' : ''}" data-t="${t}">${t}</button>`).join('');
   $('#gTipos').querySelectorAll('[data-t]').forEach(b => b.onclick = () => { G.tipo = b.dataset.t; gTipos(); });
   $('#gLitrosBox').style.display = G.tipo === 'Combustible' ? '' : 'none';
+  $('#gMontoBox').style.display = G.tipo === 'Solo kilometraje' ? 'none' : '';
 }
 function guardarGasto() {
-  const monto = Number($('#gMonto').value);
-  if (!(monto > 0)) { toast('Poné el monto del gasto'); $('#gMonto').focus(); return; }
-  const g = {id:nid(), fecha:G.fecha, tipo:G.tipo, veh:$('#gVeh').value, chofer:$('#gChofer').value,
-    litros: G.tipo === 'Combustible' ? Number($('#gLitros').value) || 0 : 0, monto, nota:$('#gNota').value.trim()};
+  const soloKm = G.tipo === 'Solo kilometraje', monto = soloKm ? 0 : Number($('#gMonto').value), odo = num($('#gOdo').value), vid = $('#gVeh').value;
+  if (soloKm && (!vid || !odo)) { toast('Elegí el vehículo y poné el kilometraje'); $('#gOdo').focus(); return; }
+  if (!soloKm && !(monto > 0)) { toast('Poné el monto del gasto'); $('#gMonto').focus(); return; }
+  const u = odo && ultimoKm(vid, G.fecha);
+  if (u && odo < num(u.odo)) { toast(`Ojo: el kilometraje es menor que el último cargado (${num(u.odo).toLocaleString('es-AR')} km). Revisalo.`); $('#gOdo').focus(); return; }
+  if (u && odo - num(u.odo) > 3000 && !G.okSalto) {
+    return confirmar(`Son ${(odo - num(u.odo)).toLocaleString('es-AR')} km desde la última carga (${fmtFecha(u.fecha)}). ¿Está bien el número?`, 'Sí, está bien', () => { G.okSalto = true; guardarGasto(); G.okSalto = false; });
+  }
+  const g = {id:nid(), fecha:G.fecha, tipo:G.tipo, veh:vid, chofer:$('#gChofer').value,
+    litros: G.tipo === 'Combustible' ? Number($('#gLitros').value) || 0 : 0, monto, odo: odo || 0, nota:$('#gNota').value.trim()};
   S.gastos.push(g); guardar();
-  $('#gMonto').value = ''; $('#gLitros').value = ''; $('#gNota').value = '';
-  gLista();
-  toast('Gasto guardado: ' + g.tipo + ' — ' + money(monto), () => { S.gastos = S.gastos.filter(x => x.id !== g.id); guardar(); gLista(); });
+  $('#gMonto').value = ''; $('#gLitros').value = ''; $('#gNota').value = ''; $('#gOdo').value = '';
+  gLista(); gKm(); gOdoUlt();
+  toast(soloKm ? 'Kilometraje guardado' : 'Gasto guardado: ' + g.tipo + ' — ' + money(monto), () => { S.gastos = S.gastos.filter(x => x.id !== g.id); guardar(); gLista(); gKm(); gOdoUlt(); });
 }
 function gLista() {
   const m = mesDe(G.fecha);
@@ -1381,12 +1434,12 @@ function gLista() {
   $('#gLista').innerHTML = `<div class="seccion-tit"><h2>Gastos de ${esc(nombreMes(m))}</h2><span class="tag">${money(lista.reduce((a, g) => a + g.monto, 0))}</span></div>
     <div class="chips" style="margin-bottom:14px">${Object.entries(porTipo).map(([t, v]) => `<span class="tag">${esc(t)}: ${money(v)}</span>`).join('')}${litros ? `<span class="tag">⛽ ${litros.toLocaleString('es-AR')} litros</span>` : ''}</div>` +
     (lista.length ? `<table class="tabla"><thead><tr><th>Fecha</th><th>Gasto</th><th class="num">Monto</th><th></th></tr></thead><tbody>` +
-      lista.map(g => `<tr><td>${esc(fmtFecha(g.fecha))}</td><td><b>${esc(g.tipo)}</b>${g.litros ? ' · ' + g.litros + ' L' : ''}<div class="muted" style="font-size:13px">${esc([veh(g.veh)?.nombre, emp(g.chofer)?.nombre, g.nota].filter(Boolean).join(' · '))}</div></td><td class="num"><b>${money(g.monto)}</b></td><td><button class="x" data-borrar="${g.id}" title="Borrar gasto">✕</button></td></tr>`).join('') +
+      lista.map(g => `<tr><td>${esc(fmtFecha(g.fecha))}</td><td><b>${esc(g.tipo)}</b>${g.litros ? ' · ' + g.litros + ' L' : ''}${num(g.odo) ? ' · ' + num(g.odo).toLocaleString('es-AR') + ' km' : ''}<div class="muted" style="font-size:13px">${esc([veh(g.veh)?.nombre, emp(g.chofer)?.nombre, g.nota].filter(Boolean).join(' · '))}</div></td><td class="num"><b>${g.monto ? money(g.monto) : '—'}</b></td><td><button class="x" data-borrar="${g.id}" title="Borrar gasto">✕</button></td></tr>`).join('') +
       '</tbody></table>' : '<div class="vacio">No hay gastos cargados este mes.</div>');
   $('#gLista').querySelectorAll('[data-borrar]').forEach(b => b.onclick = () => {
     const g = S.gastos.find(x => x.id === b.dataset.borrar);
-    S.gastos = S.gastos.filter(x => x !== g); guardar(); gLista();
-    toast('Gasto borrado', () => { S.gastos.push(g); guardar(); gLista(); });
+    S.gastos = S.gastos.filter(x => x !== g); guardar(); gLista(); gKm();
+    toast('Gasto borrado', () => { S.gastos.push(g); guardar(); gLista(); gKm(); });
   });
 }
 
@@ -1586,7 +1639,7 @@ function editable(cont, arr, tipo, campos, titulo, nuevo, filtro) {
 }
 function dPrecios() {
   const box = $('#dPrecios');
-  box.innerHTML = `<h2>Listas de precios</h2><p class="muted" style="margin-top:0">El precio de cada venta sale de acá según el tipo de cliente. Si un comercio o subdistribuidor tiene un precio propio, se carga en su ficha (pestaña Clientes). Vacío = mismo precio que consumidor final.</p>
+  box.innerHTML = `<h2>Listas de precios</h2><p class="muted" style="margin-top:0">El precio de cada venta sale de acá según el tipo de cliente. Si un comercio o subdistribuidor tiene un precio propio, se carga en su ficha (pestaña Clientes). Vacío = mismo precio que usuario.</p>
     <div class="scroll"><table class="tabla"><thead><tr><th>Producto</th>${CATS.map(k => `<th class="num">${k.nombre}</th>`).join('')}</tr></thead><tbody>
     ${S.productos.map(p => `<tr><td><b>${esc(p.nombre)}</b></td>${CATS.map(k => `<td class="num"><input type="number" data-p="${p.id}" data-cat="${k.id}" value="${k.id === 'final' ? p.precio : (num(S.listas[k.id]?.[p.id]) || '')}" placeholder="${p.precio}" style="width:130px;text-align:right"></td>`).join('')}</tr>`).join('')}
     </tbody></table></div>`;
