@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gestión diaria — Distribuidora de gas (prototipo)</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --amarillo:#F6E606; --negro:#141414; --fondo:#f4f4f0; --card:#fff; --texto:#1b1b1b;
+  --suave:#666; --borde:#e2e2db; --verde:#1d7a3a; --verde-bg:#e7f4ec; --rojo:#b3261e; --rojo-bg:#fbeaea;
+  --radio:14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:'Montserrat',system-ui,sans-serif;background:var(--fondo);color:var(--texto);font-size:16px;line-height:1.4}
+button,input,select,textarea{font:inherit;color:inherit}
+.app{display:flex;min-height:100vh}
+/* Navegación */
+.nav{width:220px;background:var(--negro);color:#fff;padding:20px 12px;position:sticky;top:0;height:100vh;flex-shrink:0;display:flex;flex-direction:column;gap:4px}
+.marca{font-weight:800;font-size:18px;padding:4px 12px 18px;line-height:1.2}
+.marca small{display:block;font-weight:500;font-size:12px;color:#aaa;margin-top:4px}
+.marca b{color:var(--amarillo)}
+.nav a{display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:10px;color:#ddd;text-decoration:none;font-weight:600}
+.nav a:hover{background:#262626;color:#fff}
+.nav a.activo{background:var(--amarillo);color:var(--negro)}
+.nav .ico{font-size:20px;width:24px;text-align:center}
+.nav .pie-nav{margin-top:auto;font-size:11px;color:#888;padding:12px}
+main{flex:1;padding:28px 32px 60px;max-width:1200px;min-width:0}
+h1{font-size:26px;margin:0 0 4px;font-weight:800}
+h2{font-size:18px;margin:0 0 14px;font-weight:700}
+.sub{color:var(--suave);margin:0 0 22px}
+.card{background:var(--card);border:1px solid var(--borde);border-radius:var(--radio);padding:20px;margin-bottom:18px}
+.grid2{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:18px;align-items:start}
+.fila{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.fila>*{flex:1;min-width:150px}
+label.campo{display:block;font-size:13px;font-weight:600;color:var(--suave);margin-bottom:6px}
+input[type=text],input[type=number],input[type=date],input[type=time],input[type=search],select,textarea{width:100%;padding:12px 14px;border:1.5px solid var(--borde);border-radius:10px;background:#fff;font-size:16px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--negro);box-shadow:0 0 0 3px rgba(246,230,6,.55)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 18px;border-radius:10px;border:1.5px solid var(--borde);background:#fff;font-weight:700;cursor:pointer;text-decoration:none;color:var(--texto)}
+.btn:hover{border-color:var(--negro)}
+.btn.prim{background:var(--negro);color:#fff;border-color:var(--negro)}
+.btn.prim:hover{background:#000}
+.btn.grande{padding:18px 22px;font-size:18px;width:100%}
+.btn.chico{padding:7px 12px;font-size:14px}
+.btn.peligro{color:var(--rojo)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{padding:10px 16px;border-radius:999px;border:1.5px solid var(--borde);background:#fff;font-weight:600;cursor:pointer}
+.chip.on{background:var(--amarillo);border-color:var(--negro);color:var(--negro)}
+.muted{color:var(--suave)}
+.tabla{width:100%;border-collapse:collapse;font-size:15px}
+.tabla th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--suave);font-weight:700;padding:8px 10px;border-bottom:1.5px solid var(--borde)}
+.tabla td{padding:10px;border-bottom:1px solid var(--borde);vertical-align:middle}
+.tabla tr:last-child td{border-bottom:none}
+.tabla .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tabla tfoot td{font-weight:800;border-top:1.5px solid var(--borde)}
+.tabla input{padding:8px 10px;font-size:15px}
+.x{border:none;background:none;cursor:pointer;color:#999;font-size:18px;padding:4px 8px;border-radius:6px}
+.x:hover{background:var(--rojo-bg);color:var(--rojo)}
+.vacio{color:var(--suave);text-align:center;padding:22px 10px}
+.aviso{background:#fffbd1;border:1px solid #e9dc5a;border-radius:10px;padding:10px 14px;font-size:14px;margin-bottom:18px}
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:18px}
+.kpi{background:var(--card);border:1px solid var(--borde);border-radius:var(--radio);padding:16px 18px}
+.kpi .k{font-size:13px;color:var(--suave);font-weight:600}
+.kpi .v{font-size:clamp(19px,1.9vw,26px);white-space:nowrap;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums}
+.kpi.dest{background:var(--negro);color:#fff;border-color:var(--negro)}
+.kpi.dest .k{color:#bbb}
+.kpi.dest .v{color:var(--amarillo)}
+/* Acciones inicio */
+.acciones{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px}
+.accion{display:block;background:var(--card);border:1.5px solid var(--borde);border-radius:var(--radio);padding:22px;text-decoration:none;color:var(--texto)}
+.accion:hover{border-color:var(--negro);box-shadow:0 4px 0 var(--amarillo)}
+.accion .ico{font-size:34px}
+.accion b{display:block;font-size:19px;margin-top:8px}
+.accion span{font-size:14px;color:var(--suave)}
+/* Ventas */
+.buscador{position:relative}
+.sugerencias{position:absolute;left:0;right:0;top:100%;margin-top:4px;background:#fff;border:1.5px solid var(--negro);border-radius:10px;z-index:20;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.12)}
+.sug{padding:11px 14px;cursor:pointer;border-bottom:1px solid var(--borde)}
+.sug:last-child{border-bottom:none}
+.sug small{display:block;color:var(--suave);font-size:13px}
+.sug.sel,.sug:hover{background:#fffbd1}
+.sug.nuevo{font-weight:700}
+.cliente-sel{display:flex;justify-content:space-between;align-items:center;gap:10px;background:#fffbd1;border:1.5px solid var(--negro);border-radius:10px;padding:12px 14px}
+.cliente-sel b{font-size:18px}
+.prods{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.prod{border:1.5px solid var(--borde);border-radius:12px;padding:12px;background:#fff;text-align:center;user-select:none}
+.prod.on{border-color:var(--negro);background:#fffbd1}
+.prod .n{font-weight:700;font-size:15px;min-height:2.6em;display:flex;align-items:center;justify-content:center}
+.prod .p{font-size:13px;color:var(--suave);margin-bottom:8px}
+.stepper{display:flex;align-items:center;justify-content:center;gap:6px}
+.stepper button{width:40px;height:40px;border-radius:10px;border:1.5px solid var(--borde);background:#fff;font-size:22px;font-weight:700;cursor:pointer;line-height:1}
+.stepper button:hover{border-color:var(--negro)}
+.stepper .c{min-width:34px;font-size:22px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums}
+.total-venta{display:flex;justify-content:space-between;align-items:center;font-size:15px;padding:14px 0 16px}
+.total-venta b{font-size:32px;font-variant-numeric:tabular-nums}
+.paso{display:flex;align-items:center;gap:10px;margin:18px 0 10px;font-weight:700}
+.paso:first-child{margin-top:0}
+.paso i{font-style:normal;background:var(--negro);color:var(--amarillo);width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:3px 8px;border-radius:6px;background:#eee}
+.tag.Efectivo{background:var(--verde-bg);color:var(--verde)}
+.tag.Transferencia{background:#e6eefb;color:#1f4fa3}
+.tag.CtaCte{background:var(--rojo-bg);color:var(--rojo)}
+/* Toast y modal */
+#toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:50;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{background:var(--negro);color:#fff;padding:14px 18px;border-radius:12px;display:flex;gap:16px;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.25);font-weight:600}
+.toast button{background:var(--amarillo);color:var(--negro);border:none;border-radius:8px;padding:7px 12px;font-weight:800;cursor:pointer}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px}
+.modal.hidden{display:none}
+.modal .caja{background:#fff;border-radius:16px;padding:24px;max-width:520px;width:100%}
+.modal textarea{height:200px;font-family:monospace;font-size:12px}
+.seccion-tit{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.seccion-tit h2{margin:0}
+@media (max-width:900px){
+  .grid2{grid-template-columns:1fr}
+  .acciones{grid-template-columns:1fr}
+}
+@media (max-width:760px){
+  .app{display:block}
+  .nav{position:fixed;bottom:0;left:0;right:0;top:auto;width:auto;height:auto;flex-direction:row;padding:6px;z-index:40;justify-content:space-around;gap:0}
+  .marca,.nav .pie-nav{display:none}
+  .nav a{flex-direction:column;gap:2px;padding:7px 4px;font-size:11px;flex:1;text-align:center}
+  main{padding:18px 14px 100px}
+  h1{font-size:22px}
+  .card{padding:16px}
+  .tabla{font-size:14px}
+  .tabla td,.tabla th{padding:8px 6px}
+  .ocultar-movil{display:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="nav" id="nav"></nav>
+  <main id="main"></main>
+</div>
+<div id="toast"></div>
+<div id="modal" class="modal hidden"></div>
+
+<script>
+/* ===================== Utilidades ===================== */
+const KEY = 'gestion-gas-prototipo-v1';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => '$ ' + Math.round(n || 0).toLocaleString('es-AR');
+const pad = n => String(n).padStart(2, '0');
+const ymd = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const hoy = () => ymd(new Date());
+const addDays = (s, k) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + k); return ymd(d); };
+const fmtFecha = s => new Date(s + 'T12:00:00').toLocaleDateString('es-AR', {weekday:'short', day:'numeric', month:'short'});
+const fmtLarga = s => new Date(s + 'T12:00:00').toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+const mesDe = s => s.slice(0, 7);
+const nombreMes = m => new Date(m + '-15T12:00:00').toLocaleDateString('es-AR', {month:'long', year:'numeric'});
+let uidN = Date.now();
+const nid = () => (uidN++).toString(36);
+const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const horasEntre = (a, b) => {
+  if (!a || !b) return 0;
+  const [h1, m1] = a.split(':').map(Number), [h2, m2] = b.split(':').map(Number);
+  let min = (h2 * 60 + m2) - (h1 * 60 + m1);
+  if (min < 0) min += 24 * 60;
+  return min / 60;
+};
+const fmtHoras = h => { const t = Math.round(h * 60); return Math.floor(t / 60) + ' h' + (t % 60 ? ' ' + pad(t % 60) + ' min' : ''); };
+
+/* ===================== Datos de ejemplo ===================== */
+function datosEjemplo() {
+  const S = {
+    clientes: [
+      ['Panadería La Espiga','Av. Principal 1450','342 555-0101'],
+      ['Almacén Don Pedro','San Martín 820','342 555-0102'],
+      ['María González','Belgrano 2311',''],
+      ['Juan Pérez','Rivadavia 455','342 555-0104'],
+      ['Club Social Barrio Norte','Las Heras 3100',''],
+      ['Rotisería El Buen Sabor','Mitre 1789','342 555-0106'],
+      ['Carlos Rodríguez','Moreno 902',''],
+      ['Laura Fernández','Sarmiento 1555','342 555-0108'],
+      ['Kiosco La Esquina','Urquiza 300',''],
+      ['Escuela N° 12','Pasaje Los Álamos 45',''],
+      ['Hugo Martínez','Alvear 2700','342 555-0111'],
+      ['Comedor Los Peques','Colón 640',''],
+      ['Silvia Romero','Lavalle 1230',''],
+      ['Parrilla Don Tito','Av. Costanera 5100','342 555-0114'],
+    ].map(([nombre, dir, tel]) => ({id: nid(), nombre, dir, tel})),
+    productos: [
+      {id:'g10', nombre:'Garrafa 10 kg', precio:32990, envase:true},
+      {id:'g15', nombre:'Garrafa 15 kg', precio:47990, envase:true},
+      {id:'g45', nombre:'Cilindro 45 kg', precio:114990, envase:true},
+      {id:'agua', nombre:'Bidón agua 20 L', precio:4500, envase:false},
+    ],
+    empleados: [
+      {id:nid(), nombre:'Ramón (chofer)', valorHora:5200, chofer:true},
+      {id:nid(), nombre:'Diego (chofer)', valorHora:5200, chofer:true},
+      {id:nid(), nombre:'Sergio (ayudante)', valorHora:4600, chofer:false},
+      {id:nid(), nombre:'Claudia (administración)', valorHora:4800, chofer:false},
+    ],
+    vehiculos: [
+      {id:nid(), nombre:'Camioneta 1'},
+      {id:nid(), nombre:'Camión 2'},
+    ],
+    ventas: [], gastos: [], horas: [],
+  };
+  // Movimientos de ejemplo de los últimos 20 días
+  let r = 7; const rnd = () => (r = (r * 9301 + 49297) % 233280) / 233280;
+  const pick = a => a[Math.floor(rnd() * a.length)];
+  const choferes = S.empleados.filter(e => e.chofer);
+  const pagos = ['Efectivo','Efectivo','Efectivo','Transferencia','Transferencia','CtaCte'];
+  for (let k = 20; k >= 0; k--) {
+    const f = addDays(hoy(), -k);
+    if (new Date(f + 'T12:00:00').getDay() === 0) continue;
+    const nv = k === 0 ? 4 : 7 + Math.floor(rnd() * 7);
+    for (let i = 0; i < nv; i++) {
+      const items = [];
+      const p = rnd();
+      if (p < .55) items.push({p:'g10', c:1 + Math.floor(rnd() * 3)});
+      else if (p < .85) items.push({p:'g15', c:1 + Math.floor(rnd() * 2)});
+      else items.push({p:'g45', c:1 + Math.floor(rnd() * 2)});
+      if (rnd() < .25) items.push({p:'agua', c:1 + Math.floor(rnd() * 3)});
+      items.forEach(it => it.pr = S.productos.find(x => x.id === it.p).precio);
+      const env = items.filter(it => it.p !== 'agua').reduce((a, it) => a + it.c, 0);
+      S.ventas.push({id:nid(), fecha:f, cliente:pick(S.clientes).id, items, pago:pick(pagos), env, chofer:pick(choferes).id,
+        total: items.reduce((a, it) => a + it.c * it.pr, 0)});
+    }
+    if (k > 0) {
+      if (k % 2 === 0) S.gastos.push({id:nid(), fecha:f, tipo:'Combustible', veh:pick(S.vehiculos).id, chofer:pick(choferes).id, litros:40 + Math.floor(rnd()*30), monto:0, nota:''});
+      if (k % 7 === 3) S.gastos.push({id:nid(), fecha:f, tipo:'Mantenimiento', veh:pick(S.vehiculos).id, chofer:'', litros:0, monto:45000 + Math.floor(rnd()*60)*1000, nota:'Cambio de aceite'});
+      if (k % 5 === 1) S.gastos.push({id:nid(), fecha:f, tipo:'Peaje', veh:pick(S.vehiculos).id, chofer:pick(choferes).id, litros:0, monto:2800, nota:''});
+      S.empleados.forEach(e => S.horas.push({id:nid(), fecha:f, emp:e.id, entrada:'08:00', salida: rnd() < .3 ? '18:30' : '17:00'}));
+    }
+  }
+  S.gastos.forEach(g => { if (g.tipo === 'Combustible') g.monto = g.litros * 1450; });
+  return S;
+}
+
+let S;
+try { S = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+if (!S || !S.clientes) S = datosEjemplo();
+function guardar() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+guardar();
+
+const cli = id => S.clientes.find(c => c.id === id);
+const prod = id => S.productos.find(p => p.id === id);
+const emp = id => S.empleados.find(e => e.id === id);
+const veh = id => S.vehiculos.find(v => v.id === id);
+const choferes = () => S.empleados.filter(e => e.chofer);
+const pagoTxt = p => p === 'CtaCte' ? 'Cta. corriente' : p;
+const detalle = v => v.items.map(it => it.c + ' × ' + (prod(it.p)?.nombre || '—')).join(', ');
+
+/* ===================== Toast / modal ===================== */
+function toast(msg, deshacer) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.innerHTML = '<span>' + esc(msg) + '</span>' + (deshacer ? '<button>Deshacer</button>' : '');
+  if (deshacer) t.querySelector('button').onclick = () => { deshacer(); t.remove(); };
+  $('#toast').appendChild(t);
+  setTimeout(() => t.remove(), deshacer ? 6000 : 2800);
+}
+function modal(html) { const m = $('#modal'); m.innerHTML = '<div class="caja">' + html + '</div>'; m.classList.remove('hidden'); return m; }
+function cerrarModal() { $('#modal').classList.add('hidden'); }
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') cerrarModal(); });
+function confirmar(texto, ok, fn) {
+  const m = modal('<h2>' + esc(texto) + '</h2><div class="fila" style="margin-top:18px"><button class="btn" id="mNo">Cancelar</button><button class="btn prim" id="mSi">' + esc(ok) + '</button></div>');
+  m.querySelector('#mNo').onclick = cerrarModal;
+  m.querySelector('#mSi').onclick = () => { cerrarModal(); fn(); };
+}
+
+/* ===================== Navegación ===================== */
+const SECCIONES = [
+  ['inicio','🏠','Inicio'], ['ventas','🛒','Ventas'], ['gastos','⛽','Gastos'],
+  ['horas','⏱️','Horas'], ['resumen','📊','Resumen'], ['datos','⚙️','Datos'],
+];
+let actual = 'inicio';
+function renderNav() {
+  $('#nav').innerHTML = '<div class="marca">Gestión <b>Gas</b><small>Prototipo de prueba</small></div>' +
+    SECCIONES.map(([id, ico, txt]) => `<a href="#${id}" class="${id === actual ? 'activo' : ''}"><span class="ico">${ico}</span>${txt}</a>`).join('') +
+    '<div class="pie-nav">Los datos de este prototipo quedan guardados solo en este navegador.</div>';
+}
+function ir() {
+  const h = location.hash.slice(1);
+  actual = VISTAS[h] ? h : 'inicio';
+  $('#toast').innerHTML = '';
+  renderNav();
+  VISTAS[actual]();
+  window.scrollTo(0, 0);
+}
+window.addEventListener('hashchange', ir);
+
+/* ===================== INICIO ===================== */
+function vistaInicio() {
+  const f = hoy();
+  const vs = S.ventas.filter(v => v.fecha === f);
+  const gs = S.gastos.filter(g => g.fecha === f);
+  const garrafas = vs.reduce((a, v) => a + v.items.filter(it => prod(it.p)?.envase).reduce((b, it) => b + it.c, 0), 0);
+  const hr = new Date().getHours();
+  const saludo = hr < 13 ? 'Buen día' : hr < 20 ? 'Buenas tardes' : 'Buenas noches';
+  $('#main').innerHTML = `
+    <h1>${saludo} 👋</h1>
+    <p class="sub">${esc(fmtLarga(f))}</p>
+    <div class="acciones">
+      <a class="accion" href="#ventas"><div class="ico">🛒</div><b>Cargar ventas</b><span>Cliente por cliente, rápido</span></a>
+      <a class="accion" href="#gastos"><div class="ico">⛽</div><b>Cargar un gasto</b><span>Combustible, arreglos, peajes…</span></a>
+      <a class="accion" href="#horas"><div class="ico">⏱️</div><b>Cargar horas</b><span>Entrada y salida de cada empleado</span></a>
+    </div>
+    <h2>Hoy</h2>
+    <div class="kpis">
+      <div class="kpi dest"><div class="k">Vendido hoy</div><div class="v">${money(vs.reduce((a, v) => a + v.total, 0))}</div></div>
+      <div class="kpi"><div class="k">Ventas cargadas</div><div class="v">${vs.length}</div></div>
+      <div class="kpi"><div class="k">Garrafas entregadas</div><div class="v">${garrafas}</div></div>
+      <div class="kpi"><div class="k">Gastos de hoy</div><div class="v">${money(gs.reduce((a, g) => a + g.monto, 0))}</div></div>
+    </div>
+    <div class="card">
+      <div class="seccion-tit"><h2>Últimas ventas de hoy</h2><a class="btn chico" href="#ventas">Ver todas</a></div>
+      ${tablaVentas(vs.slice(-5).reverse(), false)}
+    </div>`;
+}
+
+function tablaVentas(lista, borrar) {
+  if (!lista.length) return '<div class="vacio">Todavía no hay ventas cargadas.</div>';
+  return `<table class="tabla"><thead><tr><th>Cliente</th><th>Pago</th><th class="num">Total</th>${borrar ? '<th></th>' : ''}</tr></thead><tbody>` +
+    lista.map(v => `<tr><td><b>${esc(cli(v.cliente)?.nombre || '—')}</b><div class="muted" style="font-size:13px">${esc(detalle(v))}${v.env ? ' · ' + v.env + ' env. dev.' : ''} · ${esc(emp(v.chofer)?.nombre || 'Depósito')}</div></td>
+      <td><span class="tag ${v.pago}">${pagoTxt(v.pago)}</span></td>
+      <td class="num"><b>${money(v.total)}</b></td>
+      ${borrar ? `<td><button class="x" title="Borrar venta" data-borrar="${v.id}">✕</button></td>` : ''}</tr>`).join('') +
+    '</tbody></table>';
+}
+
+/* ===================== VENTAS ===================== */
+const V = { fecha: hoy(), chofer: '', cliente: null, cant: {}, pago: 'Efectivo', env: 0, envTocado: false, q: '', sel: 0 };
+
+function vistaVentas() {
+  if (!V.chofer && choferes()[0]) V.chofer = choferes()[0].id;
+  $('#main').innerHTML = `
+    <h1>Cargar ventas</h1>
+    <p class="sub">Elegí el cliente, sumá lo que llevó y guardá. Enseguida queda listo para el siguiente.</p>
+    <div class="grid2">
+      <div class="card">
+        <div class="fila" style="margin-bottom:6px">
+          <div><label class="campo">Fecha</label><input type="date" id="vFecha" value="${V.fecha}"></div>
+          <div><label class="campo">Chofer / reparto</label><select id="vChofer">${choferes().map(e => `<option value="${e.id}" ${e.id === V.chofer ? 'selected' : ''}>${esc(e.nombre)}</option>`).join('')}<option value="" ${!V.chofer ? 'selected' : ''}>Venta en depósito</option></select></div>
+        </div>
+        <div class="paso"><i>1</i> Cliente</div>
+        <div id="vCliente"></div>
+        <div class="paso"><i>2</i> ¿Qué llevó?</div>
+        <div id="vProds"></div>
+        <div class="paso"><i>3</i> Envases y pago</div>
+        <div id="vPie"></div>
+      </div>
+      <div class="card">
+        <div id="vLista"></div>
+      </div>
+    </div>`;
+  $('#vFecha').onchange = e => { V.fecha = e.target.value || hoy(); vLista(); };
+  $('#vChofer').onchange = e => { V.chofer = e.target.value; };
+  vCliente(); vProds(); vPie(); vLista();
+  if (!V.cliente) $('#cliQ')?.focus();
+}
+
+function vCliente() {
+  const box = $('#vCliente');
+  if (V.cliente) {
+    const c = cli(V.cliente);
+    box.innerHTML = `<div class="cliente-sel"><div><b>${esc(c.nombre)}</b><div class="muted" style="font-size:14px">${esc(c.dir || '')}${c.tel ? ' · ' + esc(c.tel) : ''}</div></div><button class="btn chico" id="cliCambiar">Cambiar</button></div>`;
+    $('#cliCambiar').onclick = () => { V.cliente = null; V.q = ''; vCliente(); $('#cliQ').focus(); };
+    return;
+  }
+  box.innerHTML = `<div class="buscador"><input type="search" id="cliQ" placeholder="Escribí el nombre o la dirección…" autocomplete="off" value="${esc(V.q)}"><div id="cliSug"></div></div>`;
+  const inp = $('#cliQ');
+  inp.oninput = () => { V.q = inp.value; V.sel = 0; vSug(); };
+  inp.onkeydown = e => {
+    const n = $('#cliSug').querySelectorAll('.sug').length;
+    if (e.key === 'ArrowDown') { e.preventDefault(); V.sel = Math.min(V.sel + 1, n - 1); vSug(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); V.sel = Math.max(V.sel - 1, 0); vSug(); }
+    else if (e.key === 'Enter') { e.preventDefault(); $('#cliSug .sug.sel')?.click(); }
+    else if (e.key === 'Escape') { V.q = ''; inp.value = ''; vSug(); }
+  };
+  vSug();
+}
+function vSug() {
+  const q = norm(V.q.trim());
+  const box = $('#cliSug');
+  if (!q) { box.innerHTML = ''; return; }
+  const res = S.clientes.filter(c => norm(c.nombre + ' ' + c.dir).includes(q)).slice(0, 7);
+  const items = res.map(c => `<div class="sug" data-id="${c.id}"><b>${esc(c.nombre)}</b><small>${esc(c.dir || '')}</small></div>`);
+  items.push(`<div class="sug nuevo" data-nuevo="1">+ Crear cliente nuevo “${esc(V.q.trim())}”</div>`);
+  box.innerHTML = '<div class="sugerencias">' + items.join('') + '</div>';
+  const els = box.querySelectorAll('.sug');
+  if (V.sel >= els.length) V.sel = els.length - 1;
+  els[V.sel]?.classList.add('sel');
+  els.forEach(el => el.onmousedown = e => { e.preventDefault(); el.click(); });
+  els.forEach(el => el.onclick = () => {
+    if (el.dataset.nuevo) return nuevoCliente(V.q.trim());
+    V.cliente = el.dataset.id; V.q = ''; vCliente();
+  });
+}
+function nuevoCliente(nombre) {
+  const m = modal(`<h2>Cliente nuevo</h2>
+    <label class="campo">Nombre</label><input type="text" id="ncN" value="${esc(nombre)}">
+    <div class="fila" style="margin-top:12px"><div><label class="campo">Dirección</label><input type="text" id="ncD"></div><div><label class="campo">Teléfono</label><input type="text" id="ncT"></div></div>
+    <div class="fila" style="margin-top:18px"><button class="btn" id="ncNo">Cancelar</button><button class="btn prim" id="ncSi">Guardar cliente</button></div>`);
+  m.querySelector('#ncD').focus();
+  m.querySelector('#ncNo').onclick = cerrarModal;
+  m.querySelector('#ncSi').onclick = () => {
+    const n = m.querySelector('#ncN').value.trim();
+    if (!n) return m.querySelector('#ncN').focus();
+    const c = {id:nid(), nombre:n, dir:m.querySelector('#ncD').value.trim(), tel:m.querySelector('#ncT').value.trim()};
+    S.clientes.push(c); guardar(); cerrarModal();
+    V.cliente = c.id; V.q = ''; vCliente();
+    toast('Cliente “' + n + '” creado');
+  };
+}
+function envAuto() { return S.productos.filter(p => p.envase).reduce((a, p) => a + (V.cant[p.id] || 0), 0); }
+function vProds() {
+  $('#vProds').innerHTML = '<div class="prods">' + S.productos.map(p => {
+    const c = V.cant[p.id] || 0;
+    return `<div class="prod ${c ? 'on' : ''}"><div class="n">${esc(p.nombre)}</div><div class="p">${money(p.precio)}</div>
+      <div class="stepper"><button data-p="${p.id}" data-d="-1" aria-label="Restar">−</button><span class="c">${c}</span><button data-p="${p.id}" data-d="1" aria-label="Sumar">+</button></div></div>`;
+  }).join('') + '</div>';
+  $('#vProds').querySelectorAll('button').forEach(b => b.onclick = () => {
+    const id = b.dataset.p;
+    V.cant[id] = Math.max(0, (V.cant[id] || 0) + Number(b.dataset.d));
+    if (!V.envTocado) V.env = envAuto();
+    vProds(); vPie();
+  });
+}
+function totalVenta() { return S.productos.reduce((a, p) => a + (V.cant[p.id] || 0) * p.precio, 0); }
+function vPie() {
+  const t = totalVenta();
+  $('#vPie').innerHTML = `
+    <div class="fila" style="align-items:center">
+      <div style="flex:0 0 auto;min-width:0"><label class="campo">Envases vacíos que devolvió</label>
+        <div class="stepper" style="justify-content:flex-start"><button data-e="-1" aria-label="Restar envase">−</button><span class="c">${V.env}</span><button data-e="1" aria-label="Sumar envase">+</button></div></div>
+      <div><label class="campo">Forma de pago</label>
+        <div class="chips">${['Efectivo','Transferencia','CtaCte'].map(p => `<button class="chip ${V.pago === p ? 'on' : ''}" data-pago="${p}">${pagoTxt(p)}</button>`).join('')}</div></div>
+    </div>
+    <div class="total-venta"><span class="muted">Total</span><b>${money(t)}</b></div>
+    <button class="btn prim grande" id="vGuardar">✓ Guardar venta y pasar al siguiente</button>`;
+  $('#vPie').querySelectorAll('[data-e]').forEach(b => b.onclick = () => { V.env = Math.max(0, V.env + Number(b.dataset.e)); V.envTocado = true; vPie(); });
+  $('#vPie').querySelectorAll('[data-pago]').forEach(b => b.onclick = () => { V.pago = b.dataset.pago; vPie(); });
+  $('#vGuardar').onclick = guardarVenta;
+}
+function guardarVenta() {
+  if (!V.cliente) { toast('Primero elegí el cliente'); $('#cliQ')?.focus(); return; }
+  const items = S.productos.filter(p => V.cant[p.id] > 0).map(p => ({p:p.id, c:V.cant[p.id], pr:p.precio}));
+  if (!items.length) { toast('Sumá al menos un producto'); return; }
+  const v = {id:nid(), fecha:V.fecha, cliente:V.cliente, items, pago:V.pago, env:V.env, chofer:V.chofer,
+    total: items.reduce((a, it) => a + it.c * it.pr, 0)};
+  S.ventas.push(v); guardar();
+  const nombre = cli(v.cliente).nombre;
+  V.cliente = null; V.cant = {}; V.pago = 'Efectivo'; V.env = 0; V.envTocado = false; V.q = '';
+  vCliente(); vProds(); vPie(); vLista();
+  $('#cliQ').focus();
+  toast('Guardada: ' + nombre + ' — ' + money(v.total), () => { S.ventas = S.ventas.filter(x => x.id !== v.id); guardar(); vLista(); });
+}
+function vLista() {
+  const lista = S.ventas.filter(v => v.fecha === V.fecha).slice().reverse();
+  const tot = lista.reduce((a, v) => a + v.total, 0);
+  $('#vLista').innerHTML = `<div class="seccion-tit"><h2>Ventas del ${esc(fmtFecha(V.fecha))}</h2><span class="tag">${lista.length} ventas · ${money(tot)}</span></div>` + tablaVentas(lista, true);
+  $('#vLista').querySelectorAll('[data-borrar]').forEach(b => b.onclick = () => {
+    const v = S.ventas.find(x => x.id === b.dataset.borrar);
+    S.ventas = S.ventas.filter(x => x !== v); guardar(); vLista();
+    toast('Venta borrada', () => { S.ventas.push(v); guardar(); vLista(); });
+  });
+}
+
+/* ===================== GASTOS ===================== */
+const TIPOS_GASTO = ['Combustible','Mantenimiento','Peaje','Lavado','Repuestos','Otro'];
+const G = { fecha: hoy(), tipo: 'Combustible' };
+function vistaGastos() {
+  $('#main').innerHTML = `
+    <h1>Cargar gastos</h1>
+    <p class="sub">Combustible, arreglos de los vehículos, peajes y cualquier otro gasto.</p>
+    <div class="grid2">
+      <div class="card">
+        <div class="paso"><i>1</i> ¿Qué tipo de gasto?</div>
+        <div class="chips" id="gTipos"></div>
+        <div class="paso"><i>2</i> Datos</div>
+        <div class="fila">
+          <div><label class="campo">Fecha</label><input type="date" id="gFecha" value="${G.fecha}"></div>
+          <div><label class="campo">Vehículo</label><select id="gVeh"><option value="">— Ninguno —</option>${S.vehiculos.map(v => `<option value="${v.id}">${esc(v.nombre)}</option>`).join('')}</select></div>
+        </div>
+        <div class="fila" style="margin-top:12px">
+          <div id="gLitrosBox"><label class="campo">Litros</label><input type="number" id="gLitros" min="0" step="0.1" inputmode="decimal"></div>
+          <div><label class="campo">Monto pagado ($)</label><input type="number" id="gMonto" min="0" step="1" inputmode="numeric"></div>
+        </div>
+        <div class="fila" style="margin-top:12px">
+          <div><label class="campo">Quién lo hizo</label><select id="gChofer"><option value="">—</option>${S.empleados.map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join('')}</select></div>
+          <div><label class="campo">Nota (opcional)</label><input type="text" id="gNota" placeholder="Ej: YPF ruta 168, ticket 4521"></div>
+        </div>
+        <div style="margin-top:18px"><button class="btn prim grande" id="gGuardar">✓ Guardar gasto</button></div>
+      </div>
+      <div class="card"><div id="gLista"></div></div>
+    </div>`;
+  if (S.vehiculos[0]) $('#gVeh').value = S.vehiculos[0].id;
+  $('#gFecha').onchange = e => { G.fecha = e.target.value || hoy(); gLista(); };
+  $('#gGuardar').onclick = guardarGasto;
+  gTipos(); gLista();
+}
+function gTipos() {
+  $('#gTipos').innerHTML = TIPOS_GASTO.map(t => `<button class="chip ${G.tipo === t ? 'on' : ''}" data-t="${t}">${t}</button>`).join('');
+  $('#gTipos').querySelectorAll('[data-t]').forEach(b => b.onclick = () => { G.tipo = b.dataset.t; gTipos(); });
+  $('#gLitrosBox').style.display = G.tipo === 'Combustible' ? '' : 'none';
+}
+function guardarGasto() {
+  const monto = Number($('#gMonto').value);
+  if (!(monto > 0)) { toast('Poné el monto del gasto'); $('#gMonto').focus(); return; }
+  const g = {id:nid(), fecha:G.fecha, tipo:G.tipo, veh:$('#gVeh').value, chofer:$('#gChofer').value,
+    litros: G.tipo === 'Combustible' ? Number($('#gLitros').value) || 0 : 0, monto, nota:$('#gNota').value.trim()};
+  S.gastos.push(g); guardar();
+  $('#gMonto').value = ''; $('#gLitros').value = ''; $('#gNota').value = '';
+  gLista();
+  toast('Gasto guardado: ' + g.tipo + ' — ' + money(monto), () => { S.gastos = S.gastos.filter(x => x.id !== g.id); guardar(); gLista(); });
+}
+function gLista() {
+  const m = mesDe(G.fecha);
+  const lista = S.gastos.filter(g => mesDe(g.fecha) === m).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const porTipo = {};
+  lista.forEach(g => porTipo[g.tipo] = (porTipo[g.tipo] || 0) + g.monto);
+  const litros = lista.reduce((a, g) => a + (g.litros || 0), 0);
+  $('#gLista').innerHTML = `<div class="seccion-tit"><h2>Gastos de ${esc(nombreMes(m))}</h2><span class="tag">${money(lista.reduce((a, g) => a + g.monto, 0))}</span></div>
+    <div class="chips" style="margin-bottom:14px">${Object.entries(porTipo).map(([t, v]) => `<span class="tag">${esc(t)}: ${money(v)}</span>`).join('')}${litros ? `<span class="tag">⛽ ${litros.toLocaleString('es-AR')} litros</span>` : ''}</div>` +
+    (lista.length ? `<table class="tabla"><thead><tr><th>Fecha</th><th>Gasto</th><th class="num">Monto</th><th></th></tr></thead><tbody>` +
+      lista.map(g => `<tr><td>${esc(fmtFecha(g.fecha))}</td><td><b>${esc(g.tipo)}</b>${g.litros ? ' · ' + g.litros + ' L' : ''}<div class="muted" style="font-size:13px">${esc([veh(g.veh)?.nombre, emp(g.chofer)?.nombre, g.nota].filter(Boolean).join(' · '))}</div></td><td class="num"><b>${money(g.monto)}</b></td><td><button class="x" data-borrar="${g.id}" title="Borrar gasto">✕</button></td></tr>`).join('') +
+      '</tbody></table>' : '<div class="vacio">No hay gastos cargados este mes.</div>');
+  $('#gLista').querySelectorAll('[data-borrar]').forEach(b => b.onclick = () => {
+    const g = S.gastos.find(x => x.id === b.dataset.borrar);
+    S.gastos = S.gastos.filter(x => x !== g); guardar(); gLista();
+    toast('Gasto borrado', () => { S.gastos.push(g); guardar(); gLista(); });
+  });
+}
+
+/* ===================== HORAS ===================== */
+const H = { fecha: hoy() };
+function vistaHoras() {
+  $('#main').innerHTML = `
+    <h1>Horas de empleados</h1>
+    <p class="sub">Cargá la entrada y la salida de cada uno. Las horas se calculan solas.</p>
+    <div class="card">
+      <div class="seccion-tit">
+        <div class="fila" style="flex:1;max-width:520px">
+          <div><label class="campo">Día</label><input type="date" id="hFecha" value="${H.fecha}"></div>
+          <div style="flex:0 0 auto"><button class="btn" id="hHorario">Completar 08:00 a 17:00</button></div>
+        </div>
+      </div>
+      <div id="hTabla"></div>
+      <div style="margin-top:16px"><button class="btn prim grande" id="hGuardar">✓ Guardar horas del día</button></div>
+    </div>
+    <div class="card" id="hMes"></div>`;
+  $('#hFecha').onchange = e => { H.fecha = e.target.value || hoy(); hTabla(); hMes(); };
+  $('#hHorario').onclick = () => {
+    document.querySelectorAll('#hTabla tr[data-emp]').forEach(tr => {
+      const [a, b] = tr.querySelectorAll('input');
+      if (!a.value) a.value = '08:00';
+      if (!b.value) b.value = '17:00';
+    });
+    hCalc();
+  };
+  $('#hGuardar').onclick = guardarHoras;
+  hTabla(); hMes();
+}
+function hTabla() {
+  $('#hTabla').innerHTML = `<table class="tabla"><thead><tr><th>Empleado</th><th>Entrada</th><th>Salida</th><th class="num">Horas</th></tr></thead><tbody>` +
+    S.empleados.map(e => {
+      const r = S.horas.find(h => h.fecha === H.fecha && h.emp === e.id) || {};
+      return `<tr data-emp="${e.id}"><td><b>${esc(e.nombre)}</b></td><td><input type="time" value="${r.entrada || ''}"></td><td><input type="time" value="${r.salida || ''}"></td><td class="num hh"></td></tr>`;
+    }).join('') + '</tbody></table>';
+  $('#hTabla').querySelectorAll('input').forEach(i => i.oninput = hCalc);
+  hCalc();
+}
+function hCalc() {
+  document.querySelectorAll('#hTabla tr[data-emp]').forEach(tr => {
+    const [a, b] = tr.querySelectorAll('input');
+    tr.querySelector('.hh').innerHTML = a.value && b.value ? '<b>' + fmtHoras(horasEntre(a.value, b.value)) + '</b>' : '<span class="muted">—</span>';
+  });
+}
+function guardarHoras() {
+  let n = 0;
+  document.querySelectorAll('#hTabla tr[data-emp]').forEach(tr => {
+    const id = tr.dataset.emp; const [a, b] = tr.querySelectorAll('input');
+    S.horas = S.horas.filter(h => !(h.fecha === H.fecha && h.emp === id));
+    if (a.value && b.value) { S.horas.push({id:nid(), fecha:H.fecha, emp:id, entrada:a.value, salida:b.value}); n++; }
+  });
+  guardar(); hMes();
+  toast('Horas guardadas (' + n + ' empleados)');
+}
+function hMes() {
+  const m = mesDe(H.fecha);
+  const filas = S.empleados.map(e => {
+    const hs = S.horas.filter(h => h.emp === e.id && mesDe(h.fecha) === m);
+    const total = hs.reduce((a, h) => a + horasEntre(h.entrada, h.salida), 0);
+    return {e, dias: hs.length, total, pagar: total * e.valorHora};
+  });
+  $('#hMes').innerHTML = `<h2>Resumen de ${esc(nombreMes(m))}</h2>
+    <table class="tabla"><thead><tr><th>Empleado</th><th class="num">Días</th><th class="num">Horas</th><th class="num ocultar-movil">Valor hora</th><th class="num">A pagar</th></tr></thead><tbody>` +
+    filas.map(f => `<tr><td>${esc(f.e.nombre)}</td><td class="num">${f.dias}</td><td class="num">${fmtHoras(f.total)}</td><td class="num ocultar-movil">${money(f.e.valorHora)}</td><td class="num"><b>${money(f.pagar)}</b></td></tr>`).join('') +
+    `</tbody><tfoot><tr><td>Total</td><td></td><td class="num">${fmtHoras(filas.reduce((a, f) => a + f.total, 0))}</td><td class="ocultar-movil"></td><td class="num">${money(filas.reduce((a, f) => a + f.pagar, 0))}</td></tr></tfoot></table>`;
+}
+
+/* ===================== RESUMEN ===================== */
+const R = { per: 'mes', desde: hoy(), hasta: hoy() };
+function rango() {
+  const f = hoy(), d = new Date(f + 'T12:00:00');
+  if (R.per === 'hoy') return [f, f];
+  if (R.per === 'semana') { const dow = (d.getDay() + 6) % 7; return [addDays(f, -dow), f]; }
+  if (R.per === 'mes') return [mesDe(f) + '-01', f];
+  if (R.per === 'mesPasado') { const p = new Date(d.getFullYear(), d.getMonth() - 1, 1); const u = new Date(d.getFullYear(), d.getMonth(), 0); return [ymd(p), ymd(u)]; }
+  return [R.desde, R.hasta];
+}
+function vistaResumen() {
+  const [desde, hasta] = rango();
+  const enR = x => x.fecha >= desde && x.fecha <= hasta;
+  const vs = S.ventas.filter(enR), gs = S.gastos.filter(enR), hs = S.horas.filter(enR);
+  const totV = vs.reduce((a, v) => a + v.total, 0), totG = gs.reduce((a, g) => a + g.monto, 0);
+  const porProd = {}, porPago = {}, porCli = {}, porTipo = {};
+  vs.forEach(v => {
+    v.items.forEach(it => { const o = porProd[it.p] ||= {c:0, t:0}; o.c += it.c; o.t += it.c * it.pr; });
+    porPago[v.pago] = (porPago[v.pago] || 0) + v.total;
+    const o = porCli[v.cliente] ||= {n:0, t:0}; o.n++; o.t += v.total;
+  });
+  gs.forEach(g => porTipo[g.tipo] = (porTipo[g.tipo] || 0) + g.monto);
+  const garrafas = Object.entries(porProd).filter(([p]) => prod(p)?.envase).reduce((a, [, o]) => a + o.c, 0);
+  const horas = hs.reduce((a, h) => a + horasEntre(h.entrada, h.salida), 0);
+  const per = [['hoy','Hoy'],['semana','Esta semana'],['mes','Este mes'],['mesPasado','Mes pasado'],['otro','Elegir fechas']];
+  const top = Object.entries(porCli).sort((a, b) => b[1].t - a[1].t).slice(0, 10);
+  $('#main').innerHTML = `
+    <h1>Resumen</h1>
+    <p class="sub">Del ${esc(fmtFecha(desde))} al ${esc(fmtFecha(hasta))}</p>
+    <div class="card">
+      <div class="chips" id="rPer">${per.map(([k, t]) => `<button class="chip ${R.per === k ? 'on' : ''}" data-p="${k}">${t}</button>`).join('')}</div>
+      ${R.per === 'otro' ? `<div class="fila" style="margin-top:14px;max-width:460px"><div><label class="campo">Desde</label><input type="date" id="rD" value="${R.desde}"></div><div><label class="campo">Hasta</label><input type="date" id="rH" value="${R.hasta}"></div></div>` : ''}
+    </div>
+    <div class="kpis">
+      <div class="kpi dest"><div class="k">Total vendido</div><div class="v">${money(totV)}</div></div>
+      <div class="kpi"><div class="k">Gastos</div><div class="v">${money(totG)}</div></div>
+      <div class="kpi"><div class="k">Ventas menos gastos</div><div class="v" style="color:${totV - totG >= 0 ? 'var(--verde)' : 'var(--rojo)'}">${money(totV - totG)}</div></div>
+      <div class="kpi"><div class="k">Garrafas entregadas</div><div class="v">${garrafas}</div></div>
+      <div class="kpi"><div class="k">Horas trabajadas</div><div class="v">${Math.round(horas)} h</div></div>
+    </div>
+    <div class="grid2">
+      <div>
+        <div class="card"><h2>Por producto</h2>${tablaSimple(['Producto','Unidades','Total'], S.productos.filter(p => porProd[p.id]).map(p => [esc(p.nombre), porProd[p.id].c, money(porProd[p.id].t)]), ['', sumar(Object.values(porProd), 'c'), money(totV)])}</div>
+        <div class="card"><h2>Clientes que más compraron</h2>${tablaSimple(['Cliente','Compras','Total'], top.map(([id, o]) => [esc(cli(id)?.nombre || '—'), o.n, money(o.t)]))}</div>
+      </div>
+      <div>
+        <div class="card"><h2>Por forma de pago</h2>${tablaSimple(['Forma de pago','Total'], Object.entries(porPago).map(([p, t]) => [`<span class="tag ${p}">${pagoTxt(p)}</span>`, money(t)]))}</div>
+        <div class="card"><h2>Gastos por tipo</h2>${tablaSimple(['Tipo','Total'], Object.entries(porTipo).sort((a, b) => b[1] - a[1]).map(([t, v]) => [esc(t), money(v)]), ['', money(totG)])}</div>
+        <div class="card"><h2>Pasar a Excel</h2><p class="muted" style="margin-top:0">Copia las ventas del período para pegarlas en una planilla de Excel.</p><button class="btn prim" id="rCopiar">📋 Copiar ventas para Excel</button></div>
+      </div>
+    </div>`;
+  $('#rPer').querySelectorAll('[data-p]').forEach(b => b.onclick = () => { R.per = b.dataset.p; if (R.per === 'otro') { R.desde = desde; R.hasta = hasta; } vistaResumen(); });
+  if ($('#rD')) { $('#rD').onchange = e => { R.desde = e.target.value; vistaResumen(); }; $('#rH').onchange = e => { R.hasta = e.target.value; vistaResumen(); }; }
+  $('#rCopiar').onclick = () => copiarExcel(vs);
+}
+const sumar = (arr, k) => arr.reduce((a, o) => a + o[k], 0);
+function tablaSimple(cab, filas, pie) {
+  if (!filas.length) return '<div class="vacio">Sin datos en este período.</div>';
+  const td = (v, i) => `<td class="${i ? 'num' : ''}">${v}</td>`;
+  return `<table class="tabla"><thead><tr>${cab.map((c, i) => `<th class="${i ? 'num' : ''}">${c}</th>`).join('')}</tr></thead><tbody>` +
+    filas.map(f => '<tr>' + f.map(td).join('') + '</tr>').join('') + '</tbody>' +
+    (pie ? '<tfoot><tr><td>Total</td>' + pie.slice(1).map((v, i) => td(v, i + 1)).join('') + '</tr></tfoot>' : '') + '</table>';
+}
+function copiarExcel(vs) {
+  const filas = [['Fecha','Cliente','Detalle','Forma de pago','Envases devueltos','Chofer','Total']]
+    .concat(vs.slice().sort((a, b) => a.fecha.localeCompare(b.fecha)).map(v => [v.fecha.split('-').reverse().join('/'), cli(v.cliente)?.nombre || '', detalle(v), pagoTxt(v.pago), v.env, emp(v.chofer)?.nombre || 'Depósito', v.total]));
+  const tsv = filas.map(f => f.join('\t')).join('\n');
+  const fallback = () => {
+    const m = modal('<h2>Copiá este texto</h2><p class="muted">Seleccioná todo (Ctrl+A), copiá (Ctrl+C) y pegalo en Excel.</p><textarea readonly></textarea><div style="margin-top:14px"><button class="btn prim" id="mOk">Listo</button></div>');
+    const ta = m.querySelector('textarea'); ta.value = tsv; ta.focus(); ta.select();
+    m.querySelector('#mOk').onclick = cerrarModal;
+  };
+  try { navigator.clipboard.writeText(tsv).then(() => toast('Copiado ' + vs.length + ' ventas. Pegalo en Excel con Ctrl+V'), fallback); } catch (e) { fallback(); }
+}
+
+/* ===================== DATOS ===================== */
+const D = { q: '' };
+function vistaDatos() {
+  $('#main').innerHTML = `
+    <h1>Datos</h1>
+    <p class="sub">Clientes, precios, empleados y vehículos. Los cambios se guardan solos.</p>
+    <div class="card" id="dCli"></div>
+    <div class="grid2">
+      <div>
+        <div class="card" id="dProd"></div>
+        <div class="card" id="dVeh"></div>
+      </div>
+      <div class="card" id="dEmp"></div>
+    </div>
+    <div class="card">
+      <h2>Datos de prueba</h2>
+      <p class="muted" style="margin-top:0">Este prototipo viene con datos inventados para probarlo. Cuando quieras, podés borrar todo y empezar de cero.</p>
+      <div class="fila"><button class="btn peligro" id="dVaciar">Borrar todo y empezar de cero</button><button class="btn" id="dEjemplo">Volver a cargar los datos de ejemplo</button></div>
+    </div>`;
+  dCli(); dProd(); dEmp(); dVeh();
+  $('#dVaciar').onclick = () => confirmar('¿Borrar todas las ventas, gastos, horas y clientes?', 'Sí, borrar todo', () => {
+    S = {clientes:[], productos:S.productos, empleados:S.empleados, vehiculos:S.vehiculos, ventas:[], gastos:[], horas:[]};
+    guardar(); vistaDatos(); toast('Listo, quedó vacío');
+  });
+  $('#dEjemplo').onclick = () => confirmar('¿Reemplazar todo por los datos de ejemplo?', 'Sí, reemplazar', () => { S = datosEjemplo(); guardar(); vistaDatos(); toast('Datos de ejemplo cargados'); });
+}
+function usado(tipo, id) {
+  if (tipo === 'cli') return S.ventas.some(v => v.cliente === id);
+  if (tipo === 'prod') return S.ventas.some(v => v.items.some(it => it.p === id));
+  if (tipo === 'emp') return S.ventas.some(v => v.chofer === id) || S.horas.some(h => h.emp === id) || S.gastos.some(g => g.chofer === id);
+  if (tipo === 'veh') return S.gastos.some(g => g.veh === id);
+}
+function editable(cont, arr, tipo, campos, titulo, nuevo, filtro) {
+  const lista = filtro ? arr.filter(filtro) : arr;
+  cont.innerHTML = `<div class="seccion-tit"><h2>${titulo} <span class="tag">${arr.length}</span></h2>${tipo === 'cli' ? '<input type="search" id="dQ" placeholder="Buscar cliente…" style="max-width:260px">' : ''}<button class="btn chico" data-nuevo>+ Agregar</button></div>
+    <table class="tabla"><thead><tr>${campos.map(c => `<th class="${c.cls || ''}">${c.t}</th>`).join('')}<th></th></tr></thead><tbody>` +
+    lista.slice(0, 60).map(o => `<tr data-id="${o.id}">${campos.map(c => `<td class="${c.cls || ''}">${c.tipo === 'check'
+      ? `<input type="checkbox" data-k="${c.k}" ${o[c.k] ? 'checked' : ''} style="width:20px;height:20px">`
+      : `<input type="${c.tipo || 'text'}" data-k="${c.k}" value="${esc(o[c.k])}">`}</td>`).join('')}
+      <td><button class="x" data-borrar ${usado(tipo, o.id) ? 'disabled title="Tiene movimientos cargados, no se puede borrar" style="opacity:.25;cursor:not-allowed"' : 'title="Borrar"'}>✕</button></td></tr>`).join('') +
+    '</tbody></table>' + (lista.length > 60 ? `<p class="muted">Mostrando 60 de ${lista.length}. Usá el buscador.</p>` : '') + (!lista.length ? '<div class="vacio">No hay nada cargado.</div>' : '');
+  cont.querySelectorAll('tr[data-id]').forEach(tr => {
+    const o = arr.find(x => x.id === tr.dataset.id);
+    tr.querySelectorAll('[data-k]').forEach(i => i.onchange = () => {
+      const c = campos.find(c => c.k === i.dataset.k);
+      o[c.k] = c.tipo === 'check' ? i.checked : c.tipo === 'number' ? Number(i.value) || 0 : i.value.trim();
+      guardar(); toast('Guardado');
+    });
+    const b = tr.querySelector('[data-borrar]');
+    if (!b.disabled) b.onclick = () => { arr.splice(arr.indexOf(o), 1); guardar(); vistaDatos(); toast('Borrado'); };
+  });
+  cont.querySelector('[data-nuevo]').onclick = () => { const o = nuevo(); arr.unshift(o); guardar(); D.q = ''; vistaDatos(); };
+}
+function dCli() {
+  editable($('#dCli'), S.clientes, 'cli', [{k:'nombre', t:'Nombre'}, {k:'dir', t:'Dirección'}, {k:'tel', t:'Teléfono', cls:'ocultar-movil'}], 'Clientes',
+    () => ({id:nid(), nombre:'Cliente nuevo', dir:'', tel:''}), D.q ? c => norm(c.nombre + ' ' + c.dir).includes(norm(D.q)) : null);
+  const q = $('#dQ'); q.value = D.q;
+  q.oninput = () => { D.q = q.value; dCli(); const n = $('#dQ'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); };
+}
+function dProd() { editable($('#dProd'), S.productos, 'prod', [{k:'nombre', t:'Producto'}, {k:'precio', t:'Precio $', tipo:'number'}, {k:'envase', t:'Envase', tipo:'check'}], 'Productos y precios', () => ({id:nid(), nombre:'Producto nuevo', precio:0, envase:false})); }
+function dEmp() { editable($('#dEmp'), S.empleados, 'emp', [{k:'nombre', t:'Empleado'}, {k:'valorHora', t:'Valor hora $', tipo:'number'}, {k:'chofer', t:'Chofer', tipo:'check'}], 'Empleados', () => ({id:nid(), nombre:'Empleado nuevo', valorHora:0, chofer:false})); }
+function dVeh() { editable($('#dVeh'), S.vehiculos, 'veh', [{k:'nombre', t:'Vehículo'}], 'Vehículos', () => ({id:nid(), nombre:'Vehículo nuevo'})); }
+
+/* ===================== Arranque ===================== */
+const VISTAS = { inicio: vistaInicio, ventas: vistaVentas, gastos: vistaGastos, horas: vistaHoras, resumen: vistaResumen, datos: vistaDatos };
+ir();
+</script>
+</body>
+</html>
