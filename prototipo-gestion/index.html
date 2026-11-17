@@ -154,6 +154,15 @@ tr.anulada td b,tr.anulada td .num{text-decoration:line-through}
 tr.click{cursor:pointer}
 tr.click:hover td{background:#fffbd1}
 .stepper input.c{width:58px;text-align:center;font-size:20px;font-weight:800;padding:6px 4px}
+.vehs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.veh{border:1.5px solid var(--borde);border-radius:14px;padding:16px;background:#fff}
+.veh-tit{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:17px}
+.veh-odo{font-size:30px;font-weight:800;margin-top:8px;font-variant-numeric:tabular-nums}
+.veh-datos{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.veh-datos>div{background:#fafaf6;border-radius:10px;padding:10px 12px}
+.veh-datos span{display:block;font-size:12px;color:var(--suave);font-weight:600}
+.veh-datos b{display:block;font-size:20px;margin-top:2px;font-variant-numeric:tabular-nums}
+.veh-datos small{display:block;font-size:12px;color:var(--suave);margin-top:2px}
 .grupo-dup{border:1.5px solid var(--borde);border-radius:12px;padding:12px;margin-bottom:12px}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .tabla-stock{min-width:760px}
@@ -1379,29 +1388,45 @@ function gOdoUlt() {
   const u = vid && ultimoKm(vid);
   box.textContent = u ? `Última carga: ${num(u.odo).toLocaleString('es-AR')} km (${fmtFecha(u.fecha)})` : vid ? 'Todavía no hay kilometraje cargado para este vehículo.' : '';
 }
+// Estadísticas de un vehículo entre dos fechas (método tanque a tanque)
+function statsVeh(vid, desde, hasta) {
+  const lect = S.gastos.filter(g => g.veh === vid && num(g.odo) > 0 && g.fecha <= hasta)
+    .sort((a, b) => a.fecha.localeCompare(b.fecha) || num(a.odo) - num(b.odo));
+  const antes = lect.filter(g => g.fecha < desde).pop(), dentro = lect.filter(g => g.fecha >= desde);
+  const ini = antes || dentro[0], fin = dentro[dentro.length - 1];
+  const km = ini && fin ? num(fin.odo) - num(ini.odo) : 0;
+  // litros cargados después de la lectura inicial y hasta la final
+  const iIni = lect.indexOf(ini), iFin = lect.indexOf(fin);
+  const litros = km > 0 ? lect.slice(iIni + 1, iFin + 1).reduce((a, g) => a + num(g.litros), 0) : 0;
+  const gs = S.gastos.filter(g => g.veh === vid && g.fecha >= desde && g.fecha <= hasta);
+  const suma = (l, t) => l.filter(g => (g.tipo === 'Combustible') === t).reduce((a, g) => a + g.monto, 0);
+  const comb = suma(gs, true), otros = suma(gs, false);
+  // para el costo por km: si no hay lectura previa, no cuentan los gastos anteriores a la primera lectura ni esa carga
+  // y tampoco los posteriores a la última lectura (todavía no tienen km)
+  const gk = (antes || !ini ? gs : gs.filter(g => g !== ini && g.fecha >= ini.fecha)).filter(g => !fin || g.fecha <= fin.fecha);
+  const combK = suma(gk, true), otrosK = suma(gk, false);
+  return {km, litros, comb, otros, total: comb + otros, ultimo: lect[lect.length - 1],
+    kmL: km > 0 && litros > 0 ? km / litros : 0, xKm: km > 0 ? (combK + otrosK) / km : 0, combKm: km > 0 ? combK / km : 0};
+}
+const fmt1 = n => n.toLocaleString('es-AR', {maximumFractionDigits:1});
 function gKm() {
   const m = mesDe(G.fecha), ini = m + '-01', fin = m + '-31';
-  const filas = S.vehiculos.map(v => {
-    const gs = S.gastos.filter(g => g.veh === v.id && mesDe(g.fecha) === m);
-    const comb = gs.filter(g => g.tipo === 'Combustible').reduce((a, g) => a + g.monto, 0);
-    const otros = gs.filter(g => g.tipo !== 'Combustible').reduce((a, g) => a + g.monto, 0);
-    const litros = gs.reduce((a, g) => a + num(g.litros), 0);
-    const lecturas = S.gastos.filter(g => g.veh === v.id && num(g.odo) > 0 && g.fecha <= fin).sort((a, b) => a.fecha.localeCompare(b.fecha) || num(a.odo) - num(b.odo));
-    const antes = lecturas.filter(g => g.fecha < ini).pop(), enMes = lecturas.filter(g => g.fecha >= ini);
-    const desde = antes || enMes[0], hasta = enMes[enMes.length - 1];
-    const km = desde && hasta ? num(hasta.odo) - num(desde.odo) : 0;
-    return {v, comb, otros, total: comb + otros, litros, km};
-  });
-  const tot = filas.reduce((a, f) => ({km:a.km + f.km, total:a.total + (f.km > 0 ? f.total : 0)}), {km:0, total:0});
-  $('#gKm').innerHTML = `<div class="seccion-tit"><h2>🚚 ¿Cuánto sale el km de cada vehículo? — ${esc(nombreMes(m))}</h2></div>
-    <div class="scroll"><table class="tabla"><thead><tr><th>Vehículo</th><th class="num">Km recorridos</th><th class="num">Combustible</th><th class="num">Otros gastos</th><th class="num">Total</th><th class="num">Costo por km</th><th class="num">Consumo</th></tr></thead><tbody>
-    ${filas.map(f => `<tr><td><b>${esc(f.v.nombre)}</b></td>
-      <td class="num">${f.km > 0 ? f.km.toLocaleString('es-AR') + ' km' : '<span class="muted">sin km</span>'}</td>
-      <td class="num">${money(f.comb)}</td><td class="num">${money(f.otros)}</td><td class="num">${money(f.total)}</td>
-      <td class="num">${f.km > 0 ? `<b style="font-size:18px">${money(f.total / f.km)}</b><div class="muted" style="font-size:12px">combustible ${money(f.comb / f.km)}</div>` : '—'}</td>
-      <td class="num">${f.km > 0 && f.litros ? (f.litros / f.km * 100).toLocaleString('es-AR', {maximumFractionDigits:1}) + ' L/100 km' : '—'}</td></tr>`).join('') || `<tr><td colspan="7" class="vacio">No hay vehículos cargados. Agregalos en Datos.</td></tr>`}
-    </tbody>${tot.km > 0 ? `<tfoot><tr><td>Toda la flota</td><td class="num">${tot.km.toLocaleString('es-AR')} km</td><td></td><td></td><td class="num">${money(tot.total)}</td><td class="num">${money(tot.total / tot.km)}</td><td></td></tr></tfoot>` : ''}</table></div>
-    <p class="muted" style="font-size:13px;margin-bottom:0">Se calcula con el kilometraje del tablero que se carga junto con el combustible (o con “Solo kilometraje”). Costo por km = todos los gastos del vehículo en el mes ÷ km recorridos. Los vehículos se agregan o cambian en <a href="#datos">Datos</a>.</p>`;
+  const tarjetas = S.vehiculos.map(v => {
+    const h = statsVeh(v.id, '0000-01-01', '9999-12-31'), mes = statsVeh(v.id, ini, fin), u = h.ultimo;
+    return `<div class="veh">
+      <div class="veh-tit"><b>🚚 ${esc(v.nombre)}</b><span class="tag">${esc(nombreMes(m))}</span></div>
+      <div class="veh-odo">${u ? num(u.odo).toLocaleString('es-AR') + ' km' : '— km'}</div>
+      <div class="muted" style="font-size:13px;margin-top:-2px">${u ? 'Marca el tablero (cargado el ' + esc(fmtFecha(u.fecha)) + ')' : 'Todavía no se cargó el kilometraje'}</div>
+      <div class="veh-datos">
+        <div><span>Rinde (promedio)</span><b>${h.kmL ? fmt1(h.kmL) + ' km/L' : '—'}</b><small>${mes.kmL ? 'este mes ' + fmt1(mes.kmL) + ' km/L' : 'promedio'}</small></div>
+        <div><span>Cada km cuesta (promedio)</span><b>${h.xKm ? money(h.xKm) : '—'}</b><small>${h.combKm ? 'combustible ' + money(h.combKm) : 'promedio'}</small></div>
+        <div><span>Este mes</span><b>${mes.km ? mes.km.toLocaleString('es-AR') + ' km' : '—'}</b><small>${mes.xKm ? money(mes.xKm) + ' por km' : 'sin km este mes'}</small></div>
+        <div><span>Gastos del mes</span><b>${money(mes.total)}</b><small>combustible ${money(mes.comb)}</small></div>
+      </div></div>`;
+  }).join('');
+  $('#gKm').innerHTML = `<div class="seccion-tit"><h2>🚚 Kilometraje, rendimiento y costo por km</h2></div>
+    ${S.vehiculos.length ? `<div class="vehs">${tarjetas}</div>` : '<div class="vacio">No hay vehículos cargados. Agregalos en <a href="#datos">Datos</a>.</div>'}
+    <p class="muted" style="font-size:13px;margin-bottom:0"><b>Rinde</b> = km recorridos ÷ litros cargados (promedio de todo lo cargado). <b>Cada km cuesta</b> = todos los gastos del vehículo (combustible, arreglos, peajes…) ÷ km recorridos. Se calcula con el kilometraje del tablero que se pone al cargar combustible o con “Solo kilometraje”. Los vehículos se agregan en <a href="#datos">Datos</a>.</p>`;
 }
 function gTipos() {
   $('#gTipos').innerHTML = TIPOS_GASTO.map(t => `<button class="chip ${G.tipo === t ? 'on' : ''}" data-t="${t}">${t}</button>`).join('');
