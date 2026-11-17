@@ -451,9 +451,8 @@ function confirmar(texto, ok, fn) {
 }
 
 /* ===================== Navegación ===================== */
-const LOGO = `<svg viewBox="0 0 100 92" role="img" aria-hidden="true"><path d="M50 2 L98 90 L2 90 Z" fill="#1F3C88"/>
-  <path d="M60 16 C76 34 84 50 80 68 C77 82 66 90 52 90 C38 90 30 82 30 71 C30 60 38 53 45 45 C44 56 48 63 55 66 C51 56 52 40 60 16 Z" fill="#E30613"/>
-  <path d="M52 60 C46 66 44 74 49 81 C55 88 66 84 68 74 C66 79 60 81 56 78 C51 74 51 67 52 60 Z" fill="#fff" opacity=".9"/></svg>`;
+// Cuando tengamos el logo original, va acá como imagen (data URI).
+const LOGO_IMG = '';
 const SECCIONES = [
   ['inicio','🏠','Inicio'], ['ventas','🛒','Ventas'], ['clientes','👥','Clientes'], ['gastos','⛽','Gastos'],
   ['horas','⏱️','Horas'], ['proveedor','🧾','Proveedor'], ['envases','🛢️','Envases'],
@@ -461,9 +460,9 @@ const SECCIONES = [
 ];
 let actual = 'inicio';
 function renderNav() {
-  $('#top').innerHTML = `<a class="logo" href="#inicio" aria-label="Difilippo Gas - Inicio">${LOGO}<span class="palabra"><span class="d">difilippo</span><span class="g">gas</span></span></a>
+  $('#top').innerHTML = `<a class="logo" href="#inicio" aria-label="Difilippo Gas - Inicio">${LOGO_IMG ? `<img src="${LOGO_IMG}" alt="Difilippo Gas" style="height:52px;width:auto">` : ''}<span class="palabra" ${LOGO_IMG ? 'style="display:none"' : ''}><span class="d">difilippo</span><span class="g">gas</span></span></a>
     <div class="der"><b>Sistema de gestión</b>${esc(fmtLarga(hoy()))}</div>`;
-  $('#nav').innerHTML = `<div class="marca"><div class="mini">${LOGO}<span>Difilippo <b>Gas</b></span></div><small>Prototipo de prueba</small></div>` +
+  $('#nav').innerHTML = `<div class="marca"><div class="mini"><span>Difilippo <b>Gas</b></span></div><small>Prototipo de prueba</small></div>` +
     SECCIONES.map(([id, ico, txt]) => `<a href="#${id}" class="${id === actual ? 'activo' : ''}"><span class="ico">${ico}</span>${txt}</a>`).join('') +
     '<div class="pie-nav">Los datos de este prototipo quedan guardados solo en este navegador.</div>';
 }
