@@ -118,6 +118,11 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--negro);b
 .tag.Efectivo{background:var(--verde-bg);color:var(--verde)}
 .tag.Transferencia{background:#e6eefb;color:#1f4fa3}
 .tag.CtaCte{background:var(--rojo-bg);color:var(--rojo)}
+.tag.QR{background:#e8f7f6;color:#0b6e69}
+.tag.Cheque{background:#f1ecfb;color:#5b2aa3}
+.tag.Mixto{background:#fff1d6;color:#8a5300}
+.mixto,.cheque{background:#fafaf6;border:1px dashed var(--borde);border-radius:10px;padding:12px;margin-top:12px}
+.mixto input{font-size:17px;font-weight:700;text-align:right}
 /* Toast y modal */
 #toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:50;display:flex;flex-direction:column;gap:8px;align-items:center}
 .toast{background:var(--negro);color:#fff;padding:14px 18px;border-radius:12px;display:flex;gap:16px;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.25);font-weight:600}
@@ -291,7 +296,7 @@ function datosEjemplo() {
   let r = 7; const rnd = () => (r = (r * 9301 + 49297) % 233280) / 233280;
   const pick = a => a[Math.floor(rnd() * a.length)];
   const choferes = S.empleados.filter(e => e.chofer);
-  const pagos = ['Efectivo','Efectivo','Efectivo','Transferencia','Transferencia','CtaCte'];
+  const pagos = ['Efectivo','Efectivo','Efectivo','Transferencia','QR','CtaCte'];
   const pr = (c, p) => c.precios[p] || (S.listas[c.categoria] || {})[p] || S.productos.find(x => x.id === p).precio;
   let nro = 0;
   for (let k = 20; k >= 0; k--) {
@@ -307,9 +312,13 @@ function datosEjemplo() {
       if (!sub && c.categoria !== 'final' && rnd() < .2) items.push({p:'c15', c:1 + Math.floor(rnd() * 3)});
       items.forEach(it => it.pr = pr(c, it.p));
       const env = items.reduce((a, it) => a + it.c, 0);
-      const pago = sub ? (rnd() < .8 ? 'CtaCte' : 'Transferencia') : com ? (rnd() < .55 ? 'CtaCte' : pick(pagos)) : pick(pagos);
-      S.ventas.push({id:nid(), nro:++nro, fecha:f, cliente:c.id, items, pago, env, chofer:pick(choferes).id,
-        total: items.reduce((a, it) => a + it.c * it.pr, 0)});
+      const pago = sub ? (rnd() < .6 ? 'CtaCte' : pick(['Transferencia','Cheque','Mixto'])) : com ? (rnd() < .45 ? 'CtaCte' : pick(['Efectivo','Transferencia','QR','Cheque','Mixto'])) : pick(pagos);
+      const total = items.reduce((a, it) => a + it.c * it.pr, 0);
+      let pv = [], cc = 0;
+      if (pago === 'CtaCte') cc = total;
+      else if (pago === 'Mixto') { const ef = Math.round(total * 0.5 / 1000) * 1000; pv = [{medio:'Efectivo', monto:ef}]; cc = total - ef; }
+      else pv = [{medio:pago, monto:total, ...(pago === 'Cheque' ? {cheque:{nro:String(10000000 + Math.floor(rnd() * 8999999)), banco:pick(['Banco Nación','Banco Santa Fe','Banco Macro']), fecha:addDays(f, 30)}} : {})}];
+      S.ventas.push({id:nid(), nro:++nro, fecha:f, cliente:c.id, items, pago, pagos:pv, cc, env, chofer:pick(choferes).id, total});
     }
     if (k > 0) {
       if (k % 2 === 0) S.gastos.push({id:nid(), fecha:f, tipo:'Combustible', veh:pick(S.vehiculos).id, chofer:pick(choferes).id, litros:40 + Math.floor(rnd()*30), monto:0, nota:''});
@@ -321,7 +330,7 @@ function datosEjemplo() {
   S.gastos.forEach(g => { if (g.tipo === 'Combustible') g.monto = g.litros * 1450; });
   // Cobros de ejemplo: cada cliente pagó una parte de lo que compró a cuenta
   S.clientes.forEach((c, i) => {
-    const deuda = S.ventas.filter(v => v.cliente === c.id && v.pago === 'CtaCte').reduce((a, v) => a + v.total, 0);
+    const deuda = S.ventas.filter(v => v.cliente === c.id).reduce((a, v) => a + ccDe(v), 0);
     const frac = [0.5, 0.7, 0.85, 1, 0.6][i % 5];
     [14, 5].forEach(d => {
       const monto = Math.round(deuda * frac / 2 / 1000) * 1000;
@@ -340,6 +349,17 @@ function datosEjemplo() {
   return S;
 }
 
+/* ===================== Pagos ===================== */
+const MEDIOS = ['Efectivo','Transferencia','QR','Cheque'];
+// Lo que una venta deja en cuenta corriente (negativo = pagó de más y descuenta deuda)
+function ccDe(v) { return v.cc != null ? v.cc : (v.pago === 'CtaCte' ? v.total : 0); }
+function pagosDe(v) { return v.pagos || (v.pago === 'CtaCte' ? [] : [{medio:v.pago, monto:v.total}]); }
+function pagosTxt(v) {
+  const p = pagosDe(v).map(x => x.medio + ' ' + money(x.monto)), cc = ccDe(v);
+  if (cc > 0) p.push('Cta. cte. ' + money(cc));
+  return p.join(' + ');
+}
+
 /* ===================== Clientes: datos ===================== */
 const CATS = [{id:'final', nombre:'Consumidor final'}, {id:'comercio', nombre:'Comercio'}, {id:'subdist', nombre:'Subdistribuidor'}];
 function migrar(S) {
@@ -352,7 +372,7 @@ function migrar(S) {
   });
   S.cobros ||= []; S.recordatorios ||= [];
   if (S.ejemplo === undefined) S.ejemplo = S.clientes.some(c => c.nombre === 'Panadería La Espiga');
-  S.ventas.forEach((v, i) => { if (!v.nro) v.nro = i + 1; });
+  S.ventas.forEach((v, i) => { if (!v.nro) v.nro = i + 1; if (!v.pagos) { v.pagos = pagosDe(v); v.cc = ccDe(v); } });
   S.seq ||= {venta:0, cobro:0};
   S.seq.venta = Math.max(S.seq.venta, ...S.ventas.map(v => v.nro), 0);
   S.seq.cobro = Math.max(S.seq.cobro, ...S.cobros.map(x => x.nro), 0);
@@ -437,7 +457,7 @@ const prod = id => S.productos.find(p => p.id === id);
 const emp = id => S.empleados.find(e => e.id === id);
 const veh = id => S.vehiculos.find(v => v.id === id);
 const choferes = () => S.empleados.filter(e => e.chofer);
-const pagoTxt = p => p === 'CtaCte' ? 'Cta. corriente' : p;
+const pagoTxt = p => p === 'CtaCte' ? 'Cta. corriente' : p === 'Mixto' ? 'Parcial / combinado' : p;
 const detalle = v => v.items.map(it => it.c + ' × ' + (prod(it.p)?.nombre || '—')).join(', ');
 
 /* ===================== Toast / modal ===================== */
@@ -500,7 +520,7 @@ function precioPara(c, pid) {
 function saldoCliente(id) {
   const c = cli(id);
   return num(c?.saldoInicial)
-    + S.ventas.filter(v => !v.anulada && v.cliente === id && v.pago === 'CtaCte').reduce((a, v) => a + v.total, 0)
+    + S.ventas.filter(v => !v.anulada && v.cliente === id).reduce((a, v) => a + ccDe(v), 0)
     - S.cobros.filter(x => !x.anulado && x.cliente === id).reduce((a, x) => a + x.monto, 0);
 }
 const ultimoCobro = id => S.cobros.filter(x => !x.anulado && x.cliente === id).sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
@@ -532,18 +552,33 @@ function pedirAnulacion(titulo, fn) {
   m.querySelector('#aNo').onclick = cerrarModal;
   m.querySelector('#aSi').onclick = () => { const mot = m.querySelector('#aM').value.trim(); cerrarModal(); fn({fecha:hoy(), motivo:mot}); };
 }
+function chequeHTML(ch) {
+  return `<div class="cheque"><div class="muted" style="font-size:13px;font-weight:700;margin-bottom:6px">🧾 Datos del cheque</div><div class="fila">
+    <div><label class="campo">N° de cheque</label><input type="text" data-ch="nro" value="${esc(ch.nro || '')}" inputmode="numeric"></div>
+    <div><label class="campo">Banco</label><input type="text" data-ch="banco" value="${esc(ch.banco || '')}"></div>
+    <div><label class="campo">Fecha de cobro</label><input type="date" data-ch="fecha" value="${ch.fecha || ''}"></div></div></div>`;
+}
+function leerCheque(box) { const o = {}; box.querySelectorAll('[data-ch]').forEach(i => o[i.dataset.ch] = i.value.trim()); return o; }
+function recordarCheque(ch, monto, cid) {
+  if (!ch?.fecha) return null;
+  const r = {id:nid(), fecha:ch.fecha, cliente:cid, texto:`Depositar cheque${ch.nro ? ' N° ' + ch.nro : ''}${ch.banco ? ' (' + ch.banco + ')' : ''} de ${money(monto)}`, hecho:false};
+  S.recordatorios.push(r); return r;
+}
 function registrarCobro(cid, despues) {
   const c = cli(cid), s = saldoCliente(cid);
   const m = modal(`<h2>💵 Cobro a ${esc(c.nombre)}</h2><p class="muted" style="margin-top:0">${s > 0 ? 'Debe ' + money(s) : 'No tiene deuda'}</p>
     <div class="fila"><div><label class="campo">Monto ($)</label><input type="number" id="kM" value="${s > 0 ? Math.round(s) : ''}" inputmode="numeric"></div><div><label class="campo">Fecha</label><input type="date" id="kF" value="${hoy()}"></div></div>
-    <div class="fila" style="margin-top:12px"><div><label class="campo">Cómo pagó</label><select id="kMed"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select></div><div><label class="campo">Nota (opcional)</label><input type="text" id="kN" placeholder="Ej: recibo 0012"></div></div>
+    <div class="fila" style="margin-top:12px"><div><label class="campo">Cómo pagó</label><select id="kMed"><option>Efectivo</option><option>Transferencia</option><option>QR</option><option>Cheque</option><option>Otro</option></select></div><div><label class="campo">Nota (opcional)</label><input type="text" id="kN" placeholder="Ej: recibo 0012"></div></div>
+    <div id="kCh" style="display:none;margin-top:12px">${chequeHTML({})}</div>
     <div class="fila" style="margin-top:18px"><button class="btn" id="kNo">Cancelar</button><button class="btn prim" id="kSi">Guardar cobro</button></div>`);
   const mi = m.querySelector('#kM'); mi.focus(); mi.select();
+  m.querySelector('#kMed').onchange = e => m.querySelector('#kCh').style.display = e.target.value === 'Cheque' ? '' : 'none';
   m.querySelector('#kNo').onclick = cerrarModal;
   m.querySelector('#kSi').onclick = () => {
     const monto = num(mi.value);
     if (!(monto > 0)) { mi.focus(); return; }
     const x = {id:nid(), nro:++S.seq.cobro, fecha:m.querySelector('#kF').value || hoy(), cliente:cid, monto, medio:m.querySelector('#kMed').value, nota:m.querySelector('#kN').value.trim()};
+    if (x.medio === 'Cheque') { x.cheque = leerCheque(m.querySelector('#kCh')); recordarCheque(x.cheque, monto, cid); }
     S.cobros.push(x); guardar(); cerrarModal(); despues && despues();
     toast('Cobro N° ' + x.nro + ' guardado — ' + money(monto) + '. Ahora debe ' + money(saldoCliente(cid)), () => { x.anulado = {fecha:hoy(), motivo:'Deshecho al cargar'}; guardar(); despues && despues(); });
   };
@@ -672,15 +707,15 @@ function tablaVentas(lista, anular) {
   if (!lista.length) return '<div class="vacio">Todavía no hay ventas cargadas.</div>';
   return `<table class="tabla"><thead><tr><th>N°</th><th>Cliente</th><th>Pago</th><th class="num">Total</th>${anular ? '<th></th>' : ''}</tr></thead><tbody>` +
     lista.map(v => { const c = cli(v.cliente); return `<tr class="${v.anulada ? 'anulada' : ''}"><td class="muted">${v.nro || ''}</td>
-      <td>${c ? `<span class="cod">${c.codigo}</span> <b>${esc(c.nombre)}</b>` : '—'}<div class="muted" style="font-size:13px">${esc(detalle(v))}${v.env ? ' · ' + v.env + ' env. dev.' : ''} · ${esc(emp(v.chofer)?.nombre || 'Depósito')}</div>${v.anulada ? `<div class="badge-mal" style="font-size:11px;margin-top:4px">ANULADA${v.anulada.motivo ? ': ' + esc(v.anulada.motivo) : ''}</div>` : ''}</td>
-      <td><span class="tag ${v.pago}">${pagoTxt(v.pago)}</span></td>
+      <td>${c ? `<span class="cod">${c.codigo}</span> <b>${esc(c.nombre)}</b>` : '—'}<div class="muted" style="font-size:13px">${esc(detalle(v))}${v.env ? ' · ' + v.env + ' env. dev.' : ''} · ${esc(emp(v.chofer)?.nombre || 'Depósito')}${v.pago === 'Mixto' ? '<br>💳 ' + esc(pagosTxt(v)) : ''}</div>${v.anulada ? `<div class="badge-mal" style="font-size:11px;margin-top:4px">ANULADA${v.anulada.motivo ? ': ' + esc(v.anulada.motivo) : ''}</div>` : ''}</td>
+      <td><span class="tag ${v.pago}">${v.pago === 'Mixto' ? (ccDe(v) > 0 ? 'Parcial' : 'Combinado') : pagoTxt(v.pago)}</span></td>
       <td class="num"><b>${money(v.total)}</b></td>
       ${anular ? `<td>${v.anulada ? '' : `<button class="x" title="Anular venta" data-anular="${v.id}">✕</button>`}</td>` : ''}</tr>`; }).join('') +
     '</tbody></table>';
 }
 
 /* ===================== VENTAS ===================== */
-const V = { fecha: hoy(), chofer: '', cliente: null, cant: {}, pago: 'Efectivo', env: 0, envTocado: false, q: '', sel: 0 };
+const V = { fecha: hoy(), chofer: '', cliente: null, cant: {}, pago: 'Efectivo', montos: {}, cheque: {}, env: 0, envTocado: false, q: '', sel: 0 };
 
 function vistaVentas() {
   if (!V.chofer && choferes()[0]) V.chofer = choferes()[0].id;
@@ -726,7 +761,7 @@ function vCliente() {
     if ($('#cliCobrar')) $('#cliCobrar').onclick = () => registrarCobro(c.id, () => { vCliente(); vPie(); });
     if (ult) $('#vRepetir').onclick = () => {
       V.cant = {}; ult.items.forEach(it => { if (prod(it.p)) V.cant[it.p] = it.c; });
-      V.pago = ult.pago; V.envTocado = false; V.env = envAuto(); vProds(); vPie(); $('#vGuardar').focus();
+      V.pago = [...MEDIOS, 'CtaCte'].includes(ult.pago) ? ult.pago : 'Efectivo'; V.montos = {}; V.envTocado = false; V.env = envAuto(); vProds(); vPie(); $('#vGuardar').focus();
     };
     return;
   }
@@ -795,37 +830,68 @@ function afterQty() {
 }
 function totalVenta() { const c = cli(V.cliente); return S.productos.reduce((a, p) => a + (V.cant[p.id] || 0) * precioPara(c, p.id), 0); }
 function vPie() {
-  const t = totalVenta(), c = cli(V.cliente);
-  let aviso = '';
-  if (c && V.pago === 'CtaCte') {
-    const queda = saldoCliente(c.id) + t;
-    aviso = `<div class="aviso" style="margin:12px 0 0">Con esta venta queda debiendo <b>${money(queda)}</b>${num(c.limite) && queda > num(c.limite) ? ` — ⚠️ pasa su límite de ${money(c.limite)}` : ''}</div>`;
-  }
+  const t = totalVenta();
   $('#vPie').innerHTML = `
-    <div class="fila" style="align-items:center">
-      <div style="flex:0 0 auto;min-width:0"><label class="campo">Envases vacíos que devolvió</label>
-        <div class="stepper" style="justify-content:flex-start"><button data-e="-1" aria-label="Restar envase">−</button><span class="c">${V.env}</span><button data-e="1" aria-label="Sumar envase">+</button></div></div>
-      <div><label class="campo">Forma de pago</label>
-        <div class="chips">${['Efectivo','Transferencia','CtaCte'].map(p => `<button class="chip ${V.pago === p ? 'on' : ''}" data-pago="${p}">${pagoTxt(p)}</button>`).join('')}</div></div>
-    </div>${aviso}
+    <div><label class="campo">Envases vacíos que devolvió</label>
+      <div class="stepper" style="justify-content:flex-start"><button data-e="-1" aria-label="Restar envase">−</button><span class="c">${V.env}</span><button data-e="1" aria-label="Sumar envase">+</button></div></div>
+    <label class="campo" style="margin-top:14px">¿Cómo pagó?</label>
+    <div class="chips">${[...MEDIOS, 'CtaCte', 'Mixto'].map(p => `<button class="chip ${V.pago === p ? 'on' : ''}" data-pago="${p}">${p === 'Mixto' ? '➗ ' : ''}${pagoTxt(p)}</button>`).join('')}</div>
+    ${V.pago === 'Mixto' ? `<div class="mixto"><div class="muted" style="font-size:13px;margin-bottom:8px">Poné cuánto pagó con cada medio. <b>Lo que falte queda en cuenta corriente.</b></div>
+      <div class="cant4">${MEDIOS.map(m => `<div><label class="campo">${m}</label><input type="number" min="0" inputmode="numeric" data-monto="${m}" value="${V.montos[m] || ''}" placeholder="0"></div>`).join('')}</div></div>` : ''}
+    ${V.pago === 'Cheque' || V.pago === 'Mixto' ? `<div id="vCheque" style="margin-top:12px;${V.pago === 'Mixto' && !(num(V.montos.Cheque) > 0) ? 'display:none' : ''}">${chequeHTML(V.cheque)}</div>` : ''}
+    <div id="vResto"></div>
     <div class="total-venta"><span class="muted">Total</span><b>${money(t)}</b></div>
     <button class="btn prim grande" id="vGuardar">✓ Guardar venta y pasar al siguiente</button>`;
   $('#vPie').querySelectorAll('[data-e]').forEach(b => b.onclick = () => { V.env = Math.max(0, V.env + Number(b.dataset.e)); V.envTocado = true; vPie(); });
-  $('#vPie').querySelectorAll('[data-pago]').forEach(b => b.onclick = () => { V.pago = b.dataset.pago; vPie(); });
+  $('#vPie').querySelectorAll('[data-pago]').forEach(b => b.onclick = () => { V.pago = b.dataset.pago; vPie(); if (V.pago === 'Mixto') $('#vPie [data-monto]')?.focus(); });
+  $('#vPie').querySelectorAll('[data-monto]').forEach(i => {
+    i.oninput = () => { V.montos[i.dataset.monto] = i.value; if ($('#vCheque')) $('#vCheque').style.display = num(V.montos.Cheque) > 0 ? '' : 'none'; vResto(); };
+    i.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); guardarVenta(); } };
+  });
+  $('#vPie').querySelectorAll('[data-ch]').forEach(i => i.oninput = () => { V.cheque[i.dataset.ch] = i.value.trim(); });
   $('#vGuardar').onclick = guardarVenta;
+  vResto();
+}
+function pagosForm(t) {
+  if (MEDIOS.includes(V.pago)) return [{medio:V.pago, monto:t}];
+  if (V.pago === 'CtaCte') return [];
+  return MEDIOS.filter(m => num(V.montos[m]) > 0).map(m => ({medio:m, monto:num(V.montos[m])}));
+}
+function vResto() {
+  const box = $('#vResto'); if (!box) return;
+  const t = totalVenta(), c = cli(V.cliente);
+  if (!c || !t || MEDIOS.includes(V.pago)) { box.innerHTML = ''; return; }
+  const pagado = pagosForm(t).reduce((a, x) => a + x.monto, 0), resto = t - pagado, deuda = saldoCliente(c.id) + resto;
+  const lim = num(c.limite) && deuda > num(c.limite) ? ` — ⚠️ pasa su límite de ${money(c.limite)}` : '';
+  let txt;
+  if (V.pago === 'CtaCte') txt = `Todo a cuenta corriente. Con esta venta queda debiendo <b>${money(deuda)}</b>${lim}`;
+  else if (resto > 0) txt = `Pagó <b>${money(pagado)}</b> · quedan <b>${money(resto)}</b> en cuenta corriente → debe en total <b>${money(deuda)}</b>${lim}`;
+  else if (resto < 0) txt = `Pagó <b>${money(-resto)}</b> de más: se descuenta de lo que debía → ${deuda > 0 ? 'queda debiendo <b>' + money(deuda) + '</b>' : deuda < 0 ? 'queda a favor <b>' + money(-deuda) + '</b>' : 'queda en cero ✓'}`;
+  else txt = 'Pagó justo el total ✓';
+  box.innerHTML = `<div class="aviso" style="margin:12px 0 0">${txt}</div>`;
 }
 function guardarVenta() {
   if (!V.cliente) { toast('Primero elegí el cliente'); $('#cliQ')?.focus(); return; }
   const c = cli(V.cliente);
   const items = S.productos.filter(p => V.cant[p.id] > 0).map(p => ({p:p.id, c:V.cant[p.id], pr:precioPara(c, p.id)}));
   if (!items.length) { toast('Poné al menos una cantidad'); $('#vProds input')?.focus(); return; }
-  const v = {id:nid(), nro:++S.seq.venta, fecha:V.fecha, cliente:V.cliente, items, pago:V.pago, env:V.env, chofer:V.chofer,
-    total: items.reduce((a, it) => a + it.c * it.pr, 0)};
-  S.ventas.push(v); guardar();
-  V.cliente = null; V.cant = {}; V.pago = 'Efectivo'; V.env = 0; V.envTocado = false; V.q = '';
+  const total = items.reduce((a, it) => a + it.c * it.pr, 0);
+  const pagos = pagosForm(total);
+  if (V.pago === 'Mixto' && !pagos.length) { toast('Poné cuánto pagó, o elegí “Cta. corriente” si no pagó nada'); $('#vPie [data-monto]')?.focus(); return; }
+  const ch = pagos.find(x => x.medio === 'Cheque');
+  if (ch) ch.cheque = {...V.cheque};
+  const cc = total - pagos.reduce((a, x) => a + x.monto, 0);
+  const resumen = !pagos.length ? 'CtaCte' : pagos.length === 1 && cc === 0 ? pagos[0].medio : 'Mixto';
+  const v = {id:nid(), nro:++S.seq.venta, fecha:V.fecha, cliente:V.cliente, items, pago:resumen, pagos, cc, env:V.env, chofer:V.chofer, total};
+  S.ventas.push(v);
+  const rec = ch ? recordarCheque(ch.cheque, ch.monto, c.id) : null;
+  guardar();
+  V.cliente = null; V.cant = {}; V.pago = 'Efectivo'; V.montos = {}; V.cheque = {}; V.env = 0; V.envTocado = false; V.q = '';
   vCliente(); vProds(); vPie(); vLista();
   $('#cliQ').focus();
-  toast('Venta N° ' + v.nro + ': ' + c.nombre + ' — ' + money(v.total), () => { v.anulada = {fecha:hoy(), motivo:'Deshecha al cargar'}; guardar(); vLista(); });
+  toast('Venta N° ' + v.nro + ': ' + c.nombre + ' — ' + money(v.total) + (cc > 0 ? ' (' + money(cc) + ' a cuenta)' : ''), () => {
+    v.anulada = {fecha:hoy(), motivo:'Deshecha al cargar'}; if (rec) S.recordatorios = S.recordatorios.filter(r => r !== rec); guardar(); vLista();
+  });
 }
 function vLista() {
   const lista = S.ventas.filter(v => v.fecha === V.fecha).slice().reverse();
@@ -845,7 +911,7 @@ const C = { q: '', filtro: 'todos', sel: null, abrir: false, modo: 'lista', lim:
 function abrirFicha(id) { C.sel = id; C.modo = 'lista'; C.abrir = true; if (location.hash === '#clientes') { C.abrir = false; vistaClientes(); window.scrollTo(0, 0); } else location.hash = '#clientes'; }
 function mapaSaldos() {
   const m = new Map(S.clientes.map(c => [c.id, num(c.saldoInicial)]));
-  S.ventas.forEach(v => { if (!v.anulada && v.pago === 'CtaCte' && m.has(v.cliente)) m.set(v.cliente, m.get(v.cliente) + v.total); });
+  S.ventas.forEach(v => { if (!v.anulada && m.has(v.cliente)) m.set(v.cliente, m.get(v.cliente) + ccDe(v)); });
   S.cobros.forEach(x => { if (!x.anulado && m.has(x.cliente)) m.set(x.cliente, m.get(x.cliente) - x.monto); });
   return m;
 }
@@ -1184,18 +1250,18 @@ function fichaCliente(c) {
   $('#fCompras').innerHTML = '<h2>Últimas compras (todas las formas de pago)</h2>' + tablaVentas(compras, false);
 }
 function fCuenta(c, re) {
-  const movs = S.ventas.filter(v => v.cliente === c.id && v.pago === 'CtaCte').map(v => ({f:v.fecha, t:'v', o:v}))
+  const movs = S.ventas.filter(v => v.cliente === c.id && ccDe(v) !== 0).map(v => ({f:v.fecha, t:'v', o:v}))
     .concat(S.cobros.filter(x => x.cliente === c.id).map(x => ({f:x.fecha, t:'c', o:x})))
     .sort((a, b) => a.f.localeCompare(b.f) || (a.t === 'v' ? -1 : 1) || a.o.nro - b.o.nro);
   let saldo = num(c.saldoInicial);
   const filas = movs.map(m => {
     const o = m.o, an = m.t === 'v' ? o.anulada : o.anulado;
-    if (!an) saldo += m.t === 'v' ? o.total : -o.monto;
+    if (!an) saldo += m.t === 'v' ? ccDe(o) : -o.monto;
     const concepto = m.t === 'v'
-      ? `<b>Venta N° ${o.nro}</b><div class="muted" style="font-size:13px">${esc(detalle(o))}</div>`
-      : `<b>Cobro N° ${o.nro}</b><div class="muted" style="font-size:13px">${esc(o.medio)}${o.nota ? ' · ' + esc(o.nota) : ''}</div>`;
+      ? `<b>Venta N° ${o.nro}</b><div class="muted" style="font-size:13px">${esc(detalle(o))}${pagosDe(o).length ? `<br>Total ${money(o.total)} · pagó en el momento ${esc(pagosDe(o).map(x => x.medio + ' ' + money(x.monto)).join(' + '))}` : ''}</div>`
+      : `<b>Cobro N° ${o.nro}</b><div class="muted" style="font-size:13px">${esc(o.medio)}${o.cheque?.nro ? ' N° ' + esc(o.cheque.nro) : ''}${o.nota ? ' · ' + esc(o.nota) : ''}</div>`;
     return `<tr class="${an ? 'anulada' : ''}"><td style="white-space:nowrap">${esc(fmtFecha(m.f))}</td><td>${concepto}${an ? `<div class="badge-mal" style="font-size:11px;margin-top:4px">ANULADO${an.motivo ? ': ' + esc(an.motivo) : ''}</div>` : ''}</td>
-      <td class="num debe">${m.t === 'v' ? money(o.total) : ''}</td><td class="num haber">${m.t === 'c' ? money(o.monto) : ''}</td>
+      <td class="num debe">${m.t === 'v' && ccDe(o) > 0 ? money(ccDe(o)) : ''}</td><td class="num haber">${m.t === 'c' ? money(o.monto) : m.t === 'v' && ccDe(o) < 0 ? money(-ccDe(o)) : ''}</td>
       <td class="num"><b>${an ? '' : money(saldo)}</b></td><td>${an ? '' : `<button class="x" data-an="${m.t}:${o.id}" title="Anular">✕</button>`}</td></tr>`;
   });
   const box = $('#fCuenta');
@@ -1204,7 +1270,7 @@ function fCuenta(c, re) {
       <tr><td></td><td class="muted">Saldo anterior</td><td></td><td></td><td class="num"><b>${money(num(c.saldoInicial))}</b></td><td></td></tr>
       ${filas.join('')}</tbody>
       <tfoot><tr><td></td><td>Saldo actual</td><td></td><td></td><td class="num">${money(saldo)}</td><td></td></tr></tfoot></table></div>
-    <p class="muted" style="font-size:13px;margin-bottom:0">Acá van las ventas a cuenta corriente y los cobros. Nada se borra: si algo está mal se anula y queda a la vista.</p>`;
+    <p class="muted" style="font-size:13px;margin-bottom:0">Acá van las ventas a cuenta corriente (o lo que quedó sin pagar) y los cobros. Nada se borra: si algo está mal se anula y queda a la vista.</p>`;
   const sc = $('#fScroll'); sc.scrollTop = sc.scrollHeight;
   box.querySelectorAll('[data-an]').forEach(b => b.onclick = () => {
     const [t, id] = b.dataset.an.split(':');
@@ -1218,7 +1284,7 @@ function fCuenta(c, re) {
     const ult = movs.filter(m => !(m.t === 'v' ? m.o.anulada : m.o.anulado)).slice(-12);
     const f = d => d.split('-').reverse().slice(0, 2).join('/');
     const txt = `Estado de cuenta — ${c.nombre} (cód. ${c.codigo})\nAl ${fmtLarga(hoy())}\n\n` +
-      ult.map(m => m.t === 'v' ? `${f(m.f)}  Compra N° ${m.o.nro}: ${detalle(m.o)}  ${money(m.o.total)}` : `${f(m.f)}  Pago N° ${m.o.nro} (${m.o.medio})  −${money(m.o.monto)}`).join('\n') +
+      ult.map(m => m.t === 'v' ? `${f(m.f)}  Compra N° ${m.o.nro}: ${detalle(m.o)}  ${ccDe(m.o) >= 0 ? money(ccDe(m.o)) : '−' + money(-ccDe(m.o))}${pagosDe(m.o).length ? ' (total ' + money(m.o.total) + ', pagó ' + money(m.o.total - ccDe(m.o)) + ')' : ''}` : `${f(m.f)}  Pago N° ${m.o.nro} (${m.o.medio})  −${money(m.o.monto)}`).join('\n') +
       `\n\nSaldo a pagar: ${money(saldo)}`;
     copiarTexto(txt, 'Estado de cuenta copiado. Lo podés pegar en WhatsApp.');
   };
@@ -1410,7 +1476,8 @@ function vistaResumen() {
   const porProd = {}, porPago = {}, porCli = {}, porTipo = {};
   vs.forEach(v => {
     v.items.forEach(it => { const o = porProd[it.p] ||= {c:0, t:0}; o.c += it.c; o.t += it.c * it.pr; });
-    porPago[v.pago] = (porPago[v.pago] || 0) + v.total;
+    pagosDe(v).forEach(x => porPago[x.medio] = (porPago[x.medio] || 0) + x.monto);
+    if (ccDe(v) > 0) porPago.CtaCte = (porPago.CtaCte || 0) + ccDe(v);
     const o = porCli[v.cliente] ||= {n:0, t:0}; o.n++; o.t += v.total;
   });
   gs.forEach(g => porTipo[g.tipo] = (porTipo[g.tipo] || 0) + g.monto);
@@ -1440,6 +1507,7 @@ function vistaResumen() {
       </div>
       <div>
         <div class="card"><h2>Por forma de pago</h2>${tablaSimple(['Forma de pago','Total'], Object.entries(porPago).map(([p, t]) => [`<span class="tag ${p}">${pagoTxt(p)}</span>`, money(t)]))}</div>
+        <div class="card"><h2>🧾 Cheques recibidos</h2>${tablaSimple(['Cliente','N° / banco','Cobrar el','Monto'], vs.flatMap(v => pagosDe(v).filter(x => x.cheque).map(x => [v, x.cheque, x.monto])).concat(cobr.filter(x => x.cheque).map(x => [x, x.cheque, x.monto])).sort((a, b) => String(a[1].fecha).localeCompare(String(b[1].fecha))).map(([o, ch, m]) => [esc(cli(o.cliente)?.nombre || '—'), esc([ch.nro, ch.banco].filter(Boolean).join(' · ') || '—'), ch.fecha ? esc(fmtFecha(ch.fecha)) : '—', money(m)]))}</div>
         <div class="card"><h2>Gastos por tipo</h2>${tablaSimple(['Tipo','Total'], Object.entries(porTipo).sort((a, b) => b[1] - a[1]).map(([t, v]) => [esc(t), money(v)]), ['', money(totG)])}</div>
         <div class="card"><h2>Pasar a Excel</h2><p class="muted" style="margin-top:0">Copia las ventas del período para pegarlas en una planilla de Excel.</p><button class="btn prim" id="rCopiar">📋 Copiar ventas para Excel</button></div>
       </div>
@@ -1458,7 +1526,7 @@ function tablaSimple(cab, filas, pie) {
 }
 function copiarExcel(vs) {
   const filas = [['Fecha','N° venta','Código','Cliente','Detalle','Forma de pago','Envases devueltos','Chofer','Total']]
-    .concat(vs.slice().sort((a, b) => a.fecha.localeCompare(b.fecha)).map(v => [v.fecha.split('-').reverse().join('/'), v.nro, cli(v.cliente)?.codigo || '', cli(v.cliente)?.nombre || '', detalle(v), pagoTxt(v.pago), v.env, emp(v.chofer)?.nombre || 'Depósito', v.total]));
+    .concat(vs.slice().sort((a, b) => a.fecha.localeCompare(b.fecha)).map(v => [v.fecha.split('-').reverse().join('/'), v.nro, cli(v.cliente)?.codigo || '', cli(v.cliente)?.nombre || '', detalle(v), pagosTxt(v) || pagoTxt(v.pago), v.env, emp(v.chofer)?.nombre || 'Depósito', v.total]));
   copiarTexto(filas.map(f => f.join('\t')).join('\n'), 'Copiadas ' + vs.length + ' ventas. Pegalas en Excel con Ctrl+V');
 }
 
