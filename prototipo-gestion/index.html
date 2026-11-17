@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Gestión diaria — Distribuidora de gas (prototipo)</title>
+<title>Difilippo Gas — Gestión diaria (prototipo)</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap">
 <style>
 :root{
+  --marca-rojo:#E30613; --marca-azul:#1F3C88;
   --amarillo:#F6E606; --negro:#141414; --fondo:#f4f4f0; --card:#fff; --texto:#1b1b1b;
   --suave:#666; --borde:#e2e2db; --verde:#1d7a3a; --verde-bg:#e7f4ec; --rojo:#b3261e; --rojo-bg:#fbeaea;
   --radio:14px;
@@ -26,7 +27,21 @@ button,input,select,textarea{font:inherit;color:inherit}
 .nav a.activo{background:var(--amarillo);color:var(--negro)}
 .nav .ico{font-size:20px;width:24px;text-align:center}
 .nav .pie-nav{margin-top:auto;font-size:11px;color:#888;padding:12px}
-main{flex:1;padding:28px 32px 60px;max-width:1200px;min-width:0}
+.col{flex:1;min-width:0}
+.top{background:#fff;border-bottom:1px solid var(--borde);position:relative;padding:12px 32px 12px;display:flex;align-items:center;gap:16px}
+.top::before{content:"";position:absolute;left:0;right:0;top:0;height:5px;background:linear-gradient(90deg,var(--marca-rojo) 0 34%,var(--marca-azul) 34% 67%,var(--amarillo) 67%)}
+.top .logo{display:flex;align-items:center;gap:12px;text-decoration:none;margin-top:4px}
+.top .logo svg{height:52px;width:auto;flex-shrink:0}
+.palabra{display:flex;flex-direction:column;line-height:.9}
+.palabra .d{font-weight:800;font-style:italic;font-size:30px;color:var(--marca-rojo);letter-spacing:-1px}
+.palabra .g{font-weight:800;font-style:italic;font-size:15px;color:var(--marca-azul);align-self:flex-end;letter-spacing:1px;margin-top:2px}
+.top .der{margin-left:auto;text-align:right;font-size:13px;color:var(--suave);margin-top:4px}
+.top .der b{display:block;color:var(--texto);font-size:15px}
+main{padding:28px 32px 60px;max-width:1200px;min-width:0}
+h1{border-left:5px solid var(--marca-rojo);padding-left:12px}
+.paso i{background:var(--marca-azul)!important;color:#fff!important}
+.marca .mini{display:flex;align-items:center;gap:8px}
+.marca .mini svg{height:26px;width:auto}
 h1{font-size:26px;margin:0 0 4px;font-weight:800}
 h2{font-size:18px;margin:0 0 14px;font-weight:700}
 .sub{color:var(--suave);margin:0 0 22px}
@@ -167,6 +182,10 @@ tr.click:hover td{background:#fffbd1}
   .nav .ico{font-size:18px;width:auto}
   .cant4{grid-template-columns:repeat(2,1fr)}
   main{padding:18px 14px 100px}
+  .top{padding:10px 14px}
+  .top .logo svg{height:40px}
+  .palabra .d{font-size:24px}
+  .top .der{display:none}
   h1{font-size:22px}
   .card{padding:16px}
   .tabla{font-size:14px}
@@ -178,7 +197,10 @@ tr.click:hover td{background:#fffbd1}
 <body>
 <div class="app">
   <nav class="nav" id="nav"></nav>
-  <main id="main"></main>
+  <div class="col">
+    <header class="top" id="top"></header>
+    <main id="main"></main>
+  </div>
 </div>
 <div id="toast"></div>
 <div id="modal" class="modal hidden"></div>
@@ -429,6 +451,9 @@ function confirmar(texto, ok, fn) {
 }
 
 /* ===================== Navegación ===================== */
+const LOGO = `<svg viewBox="0 0 100 92" role="img" aria-hidden="true"><path d="M50 2 L98 90 L2 90 Z" fill="#1F3C88"/>
+  <path d="M60 16 C76 34 84 50 80 68 C77 82 66 90 52 90 C38 90 30 82 30 71 C30 60 38 53 45 45 C44 56 48 63 55 66 C51 56 52 40 60 16 Z" fill="#E30613"/>
+  <path d="M52 60 C46 66 44 74 49 81 C55 88 66 84 68 74 C66 79 60 81 56 78 C51 74 51 67 52 60 Z" fill="#fff" opacity=".9"/></svg>`;
 const SECCIONES = [
   ['inicio','🏠','Inicio'], ['ventas','🛒','Ventas'], ['clientes','👥','Clientes'], ['gastos','⛽','Gastos'],
   ['horas','⏱️','Horas'], ['proveedor','🧾','Proveedor'], ['envases','🛢️','Envases'],
@@ -436,7 +461,9 @@ const SECCIONES = [
 ];
 let actual = 'inicio';
 function renderNav() {
-  $('#nav').innerHTML = '<div class="marca">Gestión <b>Gas</b><small>Prototipo de prueba</small></div>' +
+  $('#top').innerHTML = `<a class="logo" href="#inicio" aria-label="Difilippo Gas - Inicio">${LOGO}<span class="palabra"><span class="d">difilippo</span><span class="g">gas</span></span></a>
+    <div class="der"><b>Sistema de gestión</b>${esc(fmtLarga(hoy()))}</div>`;
+  $('#nav').innerHTML = `<div class="marca"><div class="mini">${LOGO}<span>Difilippo <b>Gas</b></span></div><small>Prototipo de prueba</small></div>` +
     SECCIONES.map(([id, ico, txt]) => `<a href="#${id}" class="${id === actual ? 'activo' : ''}"><span class="ico">${ico}</span>${txt}</a>`).join('') +
     '<div class="pie-nav">Los datos de este prototipo quedan guardados solo en este navegador.</div>';
 }
