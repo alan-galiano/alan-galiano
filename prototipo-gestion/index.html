@@ -153,6 +153,9 @@ tr.anulada td{color:#9a9a9a}
 tr.anulada td b,tr.anulada td .num{text-decoration:line-through}
 tr.click{cursor:pointer}
 tr.click:hover td{background:#fffbd1}
+.precio-ed{display:inline-flex;align-items:center;gap:2px;font-size:14px;color:var(--suave)}
+.precio-ed input{width:92px;padding:4px 6px;font-size:15px;font-weight:700;text-align:right;border-style:dashed}
+.nota-pr{margin-top:4px;min-height:20px}
 .stepper input.c{width:58px;text-align:center;font-size:20px;font-weight:800;padding:6px 4px}
 .vehs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
 .veh{border:1.5px solid var(--borde);border-radius:14px;padding:16px;background:#fff}
@@ -281,12 +284,11 @@ function datosEjemplo() {
       [194,'Perez Juan Carlos','Rivadavia 455 dpto 2','','final'],
     ].map(([codigo, nombre, dir, tel, categoria]) => ({id: nid(), codigo, nombre, dir, tel, categoria, saldoInicial:0, limite:0, precios:{}})),
     productos: [
-      {id:'g10', nombre:'Garrafa 10 kg', precio:32990, envase:true},
-      {id:'g15', nombre:'Garrafa 15 kg', precio:47990, envase:true},
-      {id:'g45', nombre:'Cilindro 45 kg', precio:114990, envase:true},
-      {id:'c15', nombre:'Clark 15 kg (autoelevador)', precio:52990, envase:true},
+      {id:'g10', nombre:'Garrafa 10 kg', precio:32990, costo:8652, envase:true},
+      {id:'g15', nombre:'Garrafa 15 kg', precio:47990, costo:12967, envase:true},
+      {id:'g45', nombre:'Cilindro 45 kg', precio:114990, costo:37982, envase:true},
+      {id:'c15', nombre:'Clark 15 kg (autoelevador)', precio:52990, costo:16754, envase:true},
     ],
-    listas: {comercio:{g10:29990, g15:43990, g45:104990, c15:48990}, gastro:{g10:30990, g15:44990, g45:107990, c15:49990}, subdist:{g10:26500, g15:38900, g45:94000, c15:44500}},
     empleados: [
       {id:nid(), nombre:'Ramón (chofer)', valorHora:5200, chofer:true},
       {id:nid(), nombre:'Diego (chofer)', valorHora:5200, chofer:true},
@@ -300,14 +302,18 @@ function datosEjemplo() {
     ventas: [], gastos: [], horas: [], cobros: [], recordatorios: [], ejemplo: true,
   };
   const porNombre = n => S.clientes.find(c => c.nombre === n);
-  porNombre('Gas Las Flores').precios = {g10:25900};
+  // Cada cliente tiene sus propios precios (no hay lista por tipo)
+  { let q = 3; const r2 = () => (q = (q * 9301 + 49297) % 233280) / 233280;
+    const factor = {final:1, comercio:0.91, gastro:0.94, subdist:0.8};
+    S.clientes.forEach(c => { if (c.categoria === 'final' && r2() < .7) return;
+      S.productos.forEach(p => { c.precios[p.id] = Math.round(p.precio * factor[c.categoria] * (0.96 + r2() * 0.06) / 100) * 100 - 10; }); }); }
   porNombre('Subdistribuidor Norte').limite = 1500000;
   // Movimientos de ejemplo de los últimos 20 días
   let r = 7; const rnd = () => (r = (r * 9301 + 49297) % 233280) / 233280;
   const pick = a => a[Math.floor(rnd() * a.length)];
   const choferes = S.empleados.filter(e => e.chofer);
   const pagos = ['Efectivo','Efectivo','Efectivo','Transferencia','QR','CtaCte'];
-  const pr = (c, p) => c.precios[p] || (S.listas[c.categoria] || {})[p] || S.productos.find(x => x.id === p).precio;
+  const pr = (c, p) => c.precios[p] || S.productos.find(x => x.id === p).precio;
   let nro = 0;
   for (let k = 20; k >= 0; k--) {
     const f = addDays(hoy(), -k);
@@ -320,7 +326,7 @@ function datosEjemplo() {
       else if (p < .85) items.push({p:'g15', c:(1 + Math.floor(rnd() * 2)) * m});
       else items.push({p:'g45', c:(1 + Math.floor(rnd() * 2)) * (sub ? 3 : 1)});
       if (!sub && c.categoria !== 'final' && rnd() < .2) items.push({p:'c15', c:1 + Math.floor(rnd() * 3)});
-      items.forEach(it => it.pr = pr(c, it.p));
+      items.forEach(it => { it.pr = pr(c, it.p); it.co = S.productos.find(x => x.id === it.p).costo; });
       const env = items.reduce((a, it) => a + it.c, 0);
       const pago = sub ? (rnd() < .6 ? 'CtaCte' : pick(['Transferencia','Cheque','Mixto'])) : com ? (rnd() < .45 ? 'CtaCte' : pick(['Efectivo','Transferencia','QR','Cheque','Mixto'])) : pick(pagos);
       const total = items.reduce((a, it) => a + it.c * it.pr, 0);
@@ -381,8 +387,13 @@ function pagosTxt(v) {
 /* ===================== Clientes: datos ===================== */
 const CATS = [{id:'comercio', nombre:'Comercio'}, {id:'gastro', nombre:'Gastronómico'}, {id:'subdist', nombre:'Subdistribuidor'}, {id:'final', nombre:'Usuario'}];
 function migrar(S) {
-  S.listas ||= {comercio:{}, subdist:{}};
-  S.listas.gastro ||= {...(S.listas.comercio || {})};
+  // Antes había listas de precios por tipo: se pasan a cada cliente y se borran
+  if (S.listas) {
+    S.clientes.forEach(c => { c.precios ||= {}; const l = S.listas[c.categoria] || {}; Object.entries(l).forEach(([k, v]) => { if (!(num(c.precios[k]) > 0) && num(v) > 0) c.precios[k] = num(v); }); });
+    delete S.listas;
+  }
+  const costoProv = {g10:'10', g15:'15', g45:'45', c15:'c15'};
+  S.productos.forEach(p => { if (p.costo == null) p.costo = S.proveedor && costoProv[p.id] ? Math.round(num(S.proveedor.precios[costoProv[p.id]]) * (1 + num(S.proveedor.impuesto) / 100)) : 0; });
   S.clientes.forEach((c, i) => {
     if (c.codigo == null) c.codigo = 101 + i;
     c.categoria ||= 'final'; c.precios ||= {};
@@ -529,13 +540,12 @@ window.addEventListener('hashchange', ir);
 const catNombre = id => (CATS.find(c => c.id === id) || CATS[3]).nombre;
 const tagCat = c => c.categoria === 'final' ? '' : `<span class="tag cat-${c.categoria}">${catNombre(c.categoria)}</span>`;
 const ventasOk = () => S.ventas.filter(v => !v.anulada);
-function precioPara(c, pid) {
-  const p = prod(pid); if (!p) return 0;
-  if (c && num(c.precios?.[pid]) > 0) return num(c.precios[pid]);
-  const l = c && S.listas[c.categoria];
-  if (l && num(l[pid]) > 0) return num(l[pid]);
-  return p.precio;
+function origenPrecio(c, pid) {
+  const p = prod(pid); if (!p) return {pr:0};
+  if (c && num(c.precios?.[pid]) > 0) return {pr:num(c.precios[pid]), de:'cliente'};
+  return {pr:p.precio, de:'sugerido'};
 }
+function precioPara(c, pid) { return origenPrecio(c, pid).pr; }
 function saldoCliente(id) {
   const c = cli(id);
   return num(c?.saldoInicial)
@@ -607,7 +617,7 @@ function nuevoCliente(texto, despues) {
   const m = modal(`<h2>Cliente nuevo</h2>
     <div class="fila"><div style="flex:0 0 110px;min-width:0"><label class="campo">Código</label><input type="number" id="ncC" value="${esCod ? esc(texto.trim()) : sigCodigo()}"></div><div><label class="campo">Nombre</label><input type="text" id="ncN" value="${esCod ? '' : esc(texto)}"></div></div>
     <div class="fila" style="margin-top:12px"><div><label class="campo">Dirección</label><input type="text" id="ncD"></div><div><label class="campo">Teléfono</label><input type="text" id="ncT"></div></div>
-    <div style="margin-top:12px"><label class="campo">Tipo de cliente (define el precio)</label><select id="ncK">${CATS.map(k => `<option value="${k.id}" ${k.id === 'final' ? 'selected' : ''}>${k.nombre}</option>`).join('')}</select></div>
+    <div style="margin-top:12px"><label class="campo">Tipo de cliente</label><select id="ncK">${CATS.map(k => `<option value="${k.id}" ${k.id === 'final' ? 'selected' : ''}>${k.nombre}</option>`).join('')}</select></div>
     <div class="fila" style="margin-top:18px"><button class="btn" id="ncNo">Cancelar</button><button class="btn prim" id="ncSi">Guardar cliente</button></div>`);
   m.querySelector(esCod || texto ? (esCod ? '#ncN' : '#ncD') : '#ncN').focus();
   m.querySelector('#ncNo').onclick = cerrarModal;
@@ -734,7 +744,7 @@ function tablaVentas(lista, anular) {
 }
 
 /* ===================== VENTAS ===================== */
-const V = { fecha: hoy(), chofer: '', cliente: null, cant: {}, pago: 'Efectivo', montos: {}, cheque: {}, env: 0, envTocado: false, q: '', sel: 0 };
+const V = { fecha: hoy(), chofer: '', cliente: null, cant: {}, precios: {}, pago: 'Efectivo', montos: {}, cheque: {}, env: 0, envTocado: false, q: '', sel: 0 };
 
 function vistaVentas() {
   if (!V.chofer && choferes()[0]) V.chofer = choferes()[0].id;
@@ -761,7 +771,7 @@ function vistaVentas() {
   $('#vFecha').onchange = e => { V.fecha = e.target.value || hoy(); vLista(); };
   $('#vChofer').onchange = e => { V.chofer = e.target.value; };
   vCliente(); vProds(); vPie(); vLista();
-  if (!V.cliente) $('#cliQ')?.focus(); else $('#vProds input')?.focus();
+  if (!V.cliente) $('#cliQ')?.focus(); else $('#vProds [data-q]')?.focus();
 }
 
 function vCliente() {
@@ -776,7 +786,7 @@ function vCliente() {
         ${recs.map(r => `<div class="rec">📌 ${esc(r.texto)} · ${cuandoTxt(r.fecha)}</div>`).join('')}</div>
       <div style="display:flex;flex-direction:column;gap:6px">${s > 0 ? '<button class="btn chico" id="cliCobrar">💵 Cobrar</button>' : ''}<button class="btn chico" id="cliCambiar">Cambiar</button></div></div>
       ${ult ? `<button class="btn chico" id="vRepetir" style="margin-top:8px;width:100%;justify-content:flex-start">↻ Igual que la última vez: ${esc(detalle(ult))} <span class="muted">(${esc(fmtFecha(ult.fecha))})</span></button>` : ''}`;
-    $('#cliCambiar').onclick = () => { V.cliente = null; V.q = ''; vCliente(); vProds(); vPie(); $('#cliQ').focus(); };
+    $('#cliCambiar').onclick = () => { V.cliente = null; V.q = ''; V.precios = {}; vCliente(); vProds(); vPie(); $('#cliQ').focus(); };
     if ($('#cliCobrar')) $('#cliCobrar').onclick = () => registrarCobro(c.id, () => { vCliente(); vPie(); });
     if (ult) $('#vRepetir').onclick = () => {
       V.cant = {}; ult.items.forEach(it => { if (prod(it.p)) V.cant[it.p] = it.c; });
@@ -814,17 +824,18 @@ function vSug() {
   });
 }
 function elegirCliente(id) {
-  V.cliente = id; V.q = '';
+  V.cliente = id; V.q = ''; V.precios = {};
   vCliente(); vProds(); vPie();
-  $('#vProds input')?.focus();
+  $('#vProds [data-q]')?.focus();
 }
 function envAuto() { return S.productos.filter(p => p.envase).reduce((a, p) => a + (V.cant[p.id] || 0), 0); }
 function vProds() {
   const c = cli(V.cliente);
   $('#vProds').innerHTML = '<div class="prods">' + S.productos.map(p => {
-    const n = V.cant[p.id] || 0, pr = precioPara(c, p.id);
-    const esp = c && pr !== p.precio ? `<div><span class="tag cat-${num(c.precios?.[p.id]) > 0 ? 'esp' : c.categoria}">${num(c.precios?.[p.id]) > 0 ? 'Precio especial' : 'Precio ' + catNombre(c.categoria).toLowerCase()}</span></div>` : '';
-    return `<div class="prod ${n ? 'on' : ''}" data-card="${p.id}"><div class="n">${esc(p.nombre)}</div><div class="p">${money(pr)}${esp}</div>
+    const n = V.cant[p.id] || 0, o = origenPrecio(c, p.id), pr = precioV(p.id);
+    const nota = !c ? '' : V.precios[p.id] != null && V.precios[p.id] !== o.pr ? '<span class="tag cat-esp">Precio nuevo: se guarda</span>' : o.de === 'cliente' ? '<span class="tag" style="background:#eaf6ee;color:var(--verde)">Su precio</span>' : '<span class="tag" style="background:#fff3c4">Sin precio: revisá</span>';
+    return `<div class="prod ${n ? 'on' : ''}" data-card="${p.id}"><div class="n">${esc(p.nombre)}</div>
+      <div class="p"><label class="precio-ed">$ <input type="number" data-pr="${p.id}" value="${pr}" inputmode="numeric" aria-label="Precio ${esc(p.nombre)}" tabindex="-1"></label><div class="nota-pr">${nota}</div></div>
       <div class="stepper"><button data-p="${p.id}" data-d="-1" aria-label="Restar" tabindex="-1">−</button><input class="c" data-q="${p.id}" value="${n || ''}" placeholder="0" inputmode="numeric" aria-label="Cantidad ${esc(p.nombre)}"><button data-p="${p.id}" data-d="1" aria-label="Sumar" tabindex="-1">+</button></div></div>`;
   }).join('') + '</div>';
   $('#vProds').querySelectorAll('button').forEach(b => b.onclick = () => {
@@ -832,7 +843,13 @@ function vProds() {
     V.cant[id] = Math.max(0, (V.cant[id] || 0) + Number(b.dataset.d));
     afterQty();
   });
-  $('#vProds').querySelectorAll('input').forEach(i => {
+  $('#vProds').querySelectorAll('[data-pr]').forEach(i => {
+    i.onfocus = () => i.select();
+    i.oninput = () => { V.precios[i.dataset.pr] = num(i.value); vPie(); };
+    i.onchange = () => { const k = i.dataset.pr; if (!(num(i.value) > 0)) delete V.precios[k]; vProds(); };
+    i.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); i.blur(); } };
+  });
+  $('#vProds').querySelectorAll('[data-q]').forEach(i => {
     i.oninput = () => { V.cant[i.dataset.q] = Math.max(0, Math.floor(num(i.value))); afterQty(); };
     i.onfocus = () => i.select();
     i.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); guardarVenta(); } };
@@ -840,14 +857,15 @@ function vProds() {
 }
 function afterQty() {
   document.querySelectorAll('#vProds [data-card]').forEach(card => {
-    const id = card.dataset.card, i = card.querySelector('input');
+    const id = card.dataset.card, i = card.querySelector('[data-q]');
     card.classList.toggle('on', !!V.cant[id]);
     if (document.activeElement !== i) i.value = V.cant[id] || '';
   });
   if (!V.envTocado) V.env = envAuto();
   vPie();
 }
-function totalVenta() { const c = cli(V.cliente); return S.productos.reduce((a, p) => a + (V.cant[p.id] || 0) * precioPara(c, p.id), 0); }
+function precioV(pid) { return V.precios[pid] != null && V.precios[pid] > 0 ? V.precios[pid] : precioPara(cli(V.cliente), pid); }
+function totalVenta() { return S.productos.reduce((a, p) => a + (V.cant[p.id] || 0) * precioV(p.id), 0); }
 function vPie() {
   const t = totalVenta();
   $('#vPie').innerHTML = `
@@ -892,8 +910,8 @@ function vResto() {
 function guardarVenta() {
   if (!V.cliente) { toast('Primero elegí el cliente'); $('#cliQ')?.focus(); return; }
   const c = cli(V.cliente);
-  const items = S.productos.filter(p => V.cant[p.id] > 0).map(p => ({p:p.id, c:V.cant[p.id], pr:precioPara(c, p.id)}));
-  if (!items.length) { toast('Poné al menos una cantidad'); $('#vProds input')?.focus(); return; }
+  const items = S.productos.filter(p => V.cant[p.id] > 0).map(p => ({p:p.id, c:V.cant[p.id], pr:precioV(p.id), co:num(p.costo)}));
+  if (!items.length) { toast('Poné al menos una cantidad'); $('#vProds [data-q]')?.focus(); return; }
   const total = items.reduce((a, it) => a + it.c * it.pr, 0);
   const pagos = pagosForm(total);
   if (V.pago === 'Mixto' && !pagos.length) { toast('Poné cuánto pagó, o elegí “Cta. corriente” si no pagó nada'); $('#vPie [data-monto]')?.focus(); return; }
@@ -903,13 +921,16 @@ function guardarVenta() {
   const resumen = !pagos.length ? 'CtaCte' : pagos.length === 1 && cc === 0 ? pagos[0].medio : 'Mixto';
   const v = {id:nid(), nro:++S.seq.venta, fecha:V.fecha, cliente:V.cliente, items, pago:resumen, pagos, cc, env:V.env, chofer:V.chofer, total};
   S.ventas.push(v);
+  // el precio cobrado queda como precio de este cliente para la próxima
+  c.precios ||= {}; const cambiados = items.filter(it => num(c.precios[it.p]) !== it.pr);
+  const antes = {...c.precios}; items.forEach(it => c.precios[it.p] = it.pr);
   const rec = ch ? recordarCheque(ch.cheque, ch.monto, c.id) : null;
   guardar();
-  V.cliente = null; V.cant = {}; V.pago = 'Efectivo'; V.montos = {}; V.cheque = {}; V.env = 0; V.envTocado = false; V.q = '';
+  V.cliente = null; V.cant = {}; V.precios = {}; V.pago = 'Efectivo'; V.montos = {}; V.cheque = {}; V.env = 0; V.envTocado = false; V.q = '';
   vCliente(); vProds(); vPie(); vLista();
   $('#cliQ').focus();
-  toast('Venta N° ' + v.nro + ': ' + c.nombre + ' — ' + money(v.total) + (cc > 0 ? ' (' + money(cc) + ' a cuenta)' : ''), () => {
-    v.anulada = {fecha:hoy(), motivo:'Deshecha al cargar'}; if (rec) S.recordatorios = S.recordatorios.filter(r => r !== rec); guardar(); vLista();
+  toast('Venta N° ' + v.nro + ': ' + c.nombre + ' — ' + money(v.total) + (cc > 0 ? ' (' + money(cc) + ' a cuenta)' : '') + (cambiados.length ? ' · precio actualizado para este cliente' : ''), () => {
+    v.anulada = {fecha:hoy(), motivo:'Deshecha al cargar'}; c.precios = antes; if (rec) S.recordatorios = S.recordatorios.filter(r => r !== rec); guardar(); vLista();
   });
 }
 function vLista() {
@@ -1261,7 +1282,7 @@ function fichaCliente(c) {
     <div class="card" id="fCompras"></div>`;
   const re = () => fichaCliente(cli(c.id));
   $('#fVolver').onclick = () => { C.sel = null; vistaClientes(); };
-  $('#fVenta').onclick = () => { V.cliente = c.id; V.cant = {}; V.q = ''; V.pago = 'Efectivo'; V.envTocado = false; V.env = 0; location.hash = '#ventas'; };
+  $('#fVenta').onclick = () => { V.cliente = c.id; V.cant = {}; V.precios = {}; V.q = ''; V.pago = 'Efectivo'; V.envTocado = false; V.env = 0; location.hash = '#ventas'; };
   $('#fCobro').onclick = () => registrarCobro(c.id, re);
   $('#fRecNuevo').onclick = () => nuevoRecordatorio(c.id, re);
   fCuenta(c, re); fRec(c); fDatos(c, re);
@@ -1323,8 +1344,8 @@ function fDatos(c, re) {
     <div class="fila" style="margin-top:10px"><div><label class="campo">Dirección</label><input type="text" data-k="dir" value="${esc(c.dir || '')}"></div><div><label class="campo">Teléfono</label><input type="text" data-k="tel" value="${esc(c.tel || '')}"></div></div>
     <div class="fila" style="margin-top:10px"><div><label class="campo">Tipo de cliente</label><select data-k="categoria">${CATS.map(k => `<option value="${k.id}" ${c.categoria === k.id ? 'selected' : ''}>${k.nombre}</option>`).join('')}</select></div><div><label class="campo">Límite de crédito ($, 0 = sin límite)</label><input type="number" data-k="limite" value="${num(c.limite)}"></div></div>
     <div style="margin-top:10px"><label class="campo">Saldo anterior (lo que debía en el sistema viejo)</label><input type="number" data-k="saldoInicial" value="${num(c.saldoInicial)}"></div>
-    <label class="campo" style="margin-top:14px">Precios especiales para este cliente (vacío = usa la lista de ${esc(catNombre(c.categoria).toLowerCase())})</label>
-    <div class="cant4">${S.productos.map(p => `<div><label class="campo" style="font-size:12px">${esc(p.nombre)}</label><input type="number" data-precio="${p.id}" value="${num(c.precios?.[p.id]) || ''}" placeholder="${precioPara({...c, precios:{}}, p.id)}" style="font-size:15px;font-weight:600"></div>`).join('')}</div>
+    <label class="campo" style="margin-top:14px">Precios de este cliente <span style="font-weight:500">(se actualizan solos con lo que se le cobra en cada venta)</span></label>
+    <div class="cant4">${S.productos.map(p => `<div><label class="campo" style="font-size:12px">${esc(p.nombre)}</label><input type="number" data-precio="${p.id}" value="${num(c.precios?.[p.id]) || ''}" placeholder="sugerido ${p.precio}" style="font-size:15px;font-weight:600">${num(c.precios?.[p.id]) && num(p.costo) ? `<div class="muted" style="font-size:12px;margin-top:2px">ganancia ${money(num(c.precios[p.id]) - num(p.costo))}</div>` : ''}</div>`).join('')}</div>
     <div style="margin-top:14px">${usado('cli', c.id) ? '<span class="muted" style="font-size:13px">Este cliente tiene movimientos, por eso no se puede borrar.</span>' : '<button class="btn chico peligro" id="fBorrar">Borrar cliente</button>'}</div>`;
   box.querySelectorAll('[data-k]').forEach(i => i.onchange = () => {
     const k = i.dataset.k, v = ['codigo','limite','saldoInicial'].includes(k) ? num(i.value) : i.value.trim();
@@ -1335,7 +1356,7 @@ function fDatos(c, re) {
   box.querySelectorAll('[data-precio]').forEach(i => i.onchange = () => {
     c.precios ||= {};
     if (num(i.value) > 0) c.precios[i.dataset.precio] = num(i.value); else delete c.precios[i.dataset.precio];
-    guardar(); toast('Precio guardado');
+    guardar(); toast('Precio guardado'); re();
   });
   if ($('#fBorrar')) $('#fBorrar').onclick = () => confirmar('¿Borrar a ' + c.nombre + '?', 'Sí, borrar', () => {
     S.clientes = S.clientes.filter(x => x !== c); S.recordatorios = S.recordatorios.filter(r => r.cliente !== c.id);
@@ -1553,7 +1574,7 @@ function vistaResumen() {
   const totV = vs.reduce((a, v) => a + v.total, 0), totG = gs.reduce((a, g) => a + g.monto, 0);
   const porProd = {}, porPago = {}, porCli = {}, porTipo = {};
   vs.forEach(v => {
-    v.items.forEach(it => { const o = porProd[it.p] ||= {c:0, t:0}; o.c += it.c; o.t += it.c * it.pr; });
+    v.items.forEach(it => { const o = porProd[it.p] ||= {c:0, t:0, co:0}; o.c += it.c; o.t += it.c * it.pr; o.co += it.c * (it.co ?? num(prod(it.p)?.costo)); });
     pagosDe(v).forEach(x => porPago[x.medio] = (porPago[x.medio] || 0) + x.monto);
     if (ccDe(v) > 0) porPago.CtaCte = (porPago.CtaCte || 0) + ccDe(v);
     const o = porCli[v.cliente] ||= {n:0, t:0}; o.n++; o.t += v.total;
@@ -1572,6 +1593,7 @@ function vistaResumen() {
     </div>
     <div class="kpis">
       <div class="kpi dest"><div class="k">Total vendido</div><div class="v">${money(totV)}</div></div>
+      <div class="kpi"><div class="k">Ganancia (ventas − costo de lo vendido)</div><div class="v" style="color:var(--verde)">${money(totV - Object.values(porProd).reduce((a, o) => a + o.co, 0))}</div></div>
       <div class="kpi"><div class="k">Gastos</div><div class="v">${money(totG)}</div></div>
       <div class="kpi"><div class="k">Ventas menos gastos</div><div class="v" style="color:${totV - totG >= 0 ? 'var(--verde)' : 'var(--rojo)'}">${money(totV - totG)}</div></div>
       <div class="kpi"><div class="k">Garrafas entregadas</div><div class="v">${garrafas}</div></div>
@@ -1580,7 +1602,7 @@ function vistaResumen() {
     </div>
     <div class="grid2">
       <div>
-        <div class="card"><h2>Por producto</h2>${tablaSimple(['Producto','Unidades','Total'], S.productos.filter(p => porProd[p.id]).map(p => [esc(p.nombre), porProd[p.id].c, money(porProd[p.id].t)]), ['', sumar(Object.values(porProd), 'c'), money(totV)])}</div>
+        <div class="card"><h2>Por producto</h2>${tablaSimple(['Producto','Unidades','Vendido','Costo','Ganancia'], S.productos.filter(p => porProd[p.id]).map(p => [esc(p.nombre), porProd[p.id].c, money(porProd[p.id].t), money(porProd[p.id].co), money(porProd[p.id].t - porProd[p.id].co)]), ['', sumar(Object.values(porProd), 'c'), money(totV), money(sumar(Object.values(porProd), 'co')), money(totV - sumar(Object.values(porProd), 'co'))])}</div>
         <div class="card"><h2>Clientes que más compraron</h2>${tablaSimple(['Cliente','Compras','Total'], top.map(([id, o]) => [(cli(id) ? `<span class="cod">${cli(id).codigo}</span> ` : '') + esc(cli(id)?.nombre || '—'), o.n, money(o.t)]))}</div>
       </div>
       <div>
@@ -1613,7 +1635,7 @@ const D = { q: '' };
 function vistaDatos() {
   $('#main').innerHTML = `
     <h1>Datos</h1>
-    <p class="sub">Precios, productos, empleados, vehículos y lugares. Los cambios se guardan solos.</p>
+    <p class="sub">Costos, productos, empleados, vehículos y lugares. Los cambios se guardan solos.</p>
     <div class="card" id="dPrecios"></div>
     <div class="grid2">
       <div>
@@ -1663,19 +1685,21 @@ function editable(cont, arr, tipo, campos, titulo, nuevo, filtro) {
   cont.querySelector('[data-nuevo]').onclick = () => { const o = nuevo(); arr.unshift(o); guardar(); D.q = ''; vistaDatos(); };
 }
 function dPrecios() {
-  const box = $('#dPrecios');
-  box.innerHTML = `<h2>Listas de precios</h2><p class="muted" style="margin-top:0">El precio de cada venta sale de acá según el tipo de cliente. Si un comercio o subdistribuidor tiene un precio propio, se carga en su ficha (pestaña Clientes). Vacío = mismo precio que usuario.</p>
-    <div class="scroll"><table class="tabla"><thead><tr><th>Producto</th>${CATS.map(k => `<th class="num">${k.nombre}</th>`).join('')}</tr></thead><tbody>
-    ${S.productos.map(p => `<tr><td><b>${esc(p.nombre)}</b></td>${CATS.map(k => `<td class="num"><input type="number" data-p="${p.id}" data-cat="${k.id}" value="${k.id === 'final' ? p.precio : (num(S.listas[k.id]?.[p.id]) || '')}" placeholder="${p.precio}" style="width:130px;text-align:right"></td>`).join('')}</tr>`).join('')}
+  const box = $('#dPrecios'), pv = S.proveedor, map = {g10:'10', g15:'15', g45:'45', c15:'c15'};
+  const segunProv = p => pv && map[p.id] ? Math.round(num(pv.precios[map[p.id]]) * (1 + num(pv.impuesto) / 100)) : 0;
+  box.innerHTML = `<h2>Costo de cada producto para la empresa</h2>
+    <p class="muted" style="margin-top:0">Lo que le cuesta a la empresa cada producto (con impuestos). Se usa para calcular la <b>ganancia</b> en el Resumen y en la ficha de cada cliente. El precio de venta es de cada cliente y se carga en su ficha o al hacer la venta.</p>
+    <div class="scroll"><table class="tabla"><thead><tr><th>Producto</th><th class="num">Costo para la empresa</th><th class="num">Según la última factura del proveedor</th><th class="num">Precio sugerido para clientes nuevos</th></tr></thead><tbody>
+    ${S.productos.map(p => `<tr><td><b>${esc(p.nombre)}</b></td>
+      <td class="num"><input type="number" data-costo="${p.id}" value="${num(p.costo) || ''}" style="width:130px;text-align:right"></td>
+      <td class="num">${segunProv(p) ? `${money(segunProv(p))} <button class="btn chico" data-usar="${p.id}" ${segunProv(p) === num(p.costo) ? 'disabled' : ''}>Usar</button>` : '<span class="muted">—</span>'}</td>
+      <td class="num"><input type="number" data-sug="${p.id}" value="${p.precio}" style="width:130px;text-align:right"></td></tr>`).join('')}
     </tbody></table></div>`;
-  box.querySelectorAll('[data-cat]').forEach(i => i.onchange = () => {
-    const p = prod(i.dataset.p), k = i.dataset.cat;
-    if (k === 'final') p.precio = num(i.value);
-    else { S.listas[k] ||= {}; if (num(i.value) > 0) S.listas[k][p.id] = num(i.value); else delete S.listas[k][p.id]; }
-    guardar(); dPrecios(); toast('Precio actualizado');
-  });
+  box.querySelectorAll('[data-costo]').forEach(i => i.onchange = () => { prod(i.dataset.costo).costo = num(i.value); guardar(); dPrecios(); toast('Costo actualizado'); });
+  box.querySelectorAll('[data-sug]').forEach(i => i.onchange = () => { prod(i.dataset.sug).precio = num(i.value); guardar(); toast('Precio sugerido actualizado'); });
+  box.querySelectorAll('[data-usar]').forEach(b => b.onclick = () => { const p = prod(b.dataset.usar); p.costo = segunProv(p); guardar(); dPrecios(); toast('Costo actualizado según el proveedor'); });
 }
-function dProd() { editable($('#dProd'), S.productos, 'prod', [{k:'nombre', t:'Producto'}, {k:'envase', t:'Lleva envase', tipo:'check'}], 'Productos', () => ({id:nid(), nombre:'Producto nuevo', precio:0, envase:false})); }
+function dProd() { editable($('#dProd'), S.productos, 'prod', [{k:'nombre', t:'Producto'}, {k:'envase', t:'Lleva envase', tipo:'check'}], 'Productos', () => ({id:nid(), nombre:'Producto nuevo', precio:0, costo:0, envase:false})); }
 function dEmp() { editable($('#dEmp'), S.empleados, 'emp', [{k:'nombre', t:'Empleado'}, {k:'valorHora', t:'Valor hora $', tipo:'number'}, {k:'chofer', t:'Chofer', tipo:'check'}], 'Empleados', () => ({id:nid(), nombre:'Empleado nuevo', valorHora:0, chofer:false})); }
 function dLug() { editable($('#dLug'), S.lugares, 'lug', [{k:'nombre', t:'Lugar'}], 'Lugares del conteo de envases', () => ({id:nid(), nombre:'Lugar nuevo'})); }
 function dVeh() { editable($('#dVeh'), S.vehiculos, 'veh', [{k:'nombre', t:'Vehículo'}], 'Vehículos', () => ({id:nid(), nombre:'Vehículo nuevo'})); }
