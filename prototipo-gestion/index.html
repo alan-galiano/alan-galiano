@@ -133,6 +133,7 @@ tr.anulada td b,tr.anulada td .num{text-decoration:line-through}
 tr.click{cursor:pointer}
 tr.click:hover td{background:#fffbd1}
 .stepper input.c{width:58px;text-align:center;font-size:20px;font-weight:800;padding:6px 4px}
+.grupo-dup{border:1.5px solid var(--borde);border-radius:12px;padding:12px;margin-bottom:12px}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .tabla-stock{min-width:760px}
 .tabla-stock th,.tabla-stock td{text-align:center;padding:6px 4px}
@@ -236,6 +237,11 @@ function datosEjemplo() {
       [201,'Subdistribuidor Norte','Ruta 11 km 4','342 555-0201','subdist'],
       [202,'Gas Las Flores','Av. Blas Parera 7400','342 555-0202','subdist'],
       [203,'Subdistribuidor Santo Tomé','Calle 14 n° 320','342 555-0203','subdist'],
+      [190,'PEREZ JUAN','Rivadavia 455','3425550104','final'],
+      [191,'Gonzalez, María','Belgrano 2311','','final'],
+      [192,'Almacen Don Pedro','San Martin 820','','comercio'],
+      [193,'Martín Gómez','Belgrano 2311','','final'],
+      [194,'Perez Juan Carlos','Rivadavia 455 dpto 2','','final'],
     ].map(([codigo, nombre, dir, tel, categoria]) => ({id: nid(), codigo, nombre, dir, tel, categoria, saldoInicial:0, limite:0, precios:{}})),
     productos: [
       {id:'g10', nombre:'Garrafa 10 kg', precio:32990, envase:true},
@@ -254,7 +260,7 @@ function datosEjemplo() {
       {id:nid(), nombre:'Camioneta 1'},
       {id:nid(), nombre:'Camión 2'},
     ],
-    ventas: [], gastos: [], horas: [], cobros: [], recordatorios: [],
+    ventas: [], gastos: [], horas: [], cobros: [], recordatorios: [], ejemplo: true,
   };
   const porNombre = n => S.clientes.find(c => c.nombre === n);
   porNombre('Gas Las Flores').precios = {g10:25900};
@@ -323,6 +329,7 @@ function migrar(S) {
     if (c.limite == null) c.limite = 0;
   });
   S.cobros ||= []; S.recordatorios ||= [];
+  if (S.ejemplo === undefined) S.ejemplo = S.clientes.some(c => c.nombre === 'Panadería La Espiga');
   S.ventas.forEach((v, i) => { if (!v.nro) v.nro = i + 1; });
   S.seq ||= {venta:0, cobro:0};
   S.seq.venta = Math.max(S.seq.venta, ...S.ventas.map(v => v.nro), 0);
@@ -436,7 +443,7 @@ function renderNav() {
 function ir() {
   const h = location.hash.slice(1);
   actual = VISTAS[h] ? h : 'inicio';
-  if (actual === 'clientes' && !C.abrir) C.sel = null;
+  if (actual === 'clientes' && !C.abrir) { C.sel = null; C.modo = 'lista'; }
   C.abrir = false;
   $('#toast').innerHTML = '';
   renderNav();
@@ -467,10 +474,11 @@ function buscarClientes(q, lim) {
   const qq = q.trim(), toks = norm(qq).split(/\s+/).filter(Boolean);
   if (!toks.length) return [];
   const res = S.clientes.filter(c => {
-    const h = norm(c.codigo + ' ' + c.nombre + ' ' + (c.dir || '') + ' ' + (c.tel || '') + ' ' + catNombre(c.categoria));
+    const h = norm(c.codigo + ' ' + (c.viejos || []).join(' ') + ' ' + c.nombre + ' ' + (c.dir || '') + ' ' + (c.tel || '') + ' ' + catNombre(c.categoria));
     return toks.every(t => h.includes(t));
   });
-  res.sort((a, b) => (String(b.codigo) === qq) - (String(a.codigo) === qq) || (norm(b.nombre).startsWith(toks[0])) - (norm(a.nombre).startsWith(toks[0])) || a.nombre.localeCompare(b.nombre));
+  const exacto = c => String(c.codigo) === qq || (c.viejos || []).some(v => String(v) === qq);
+  res.sort((a, b) => exacto(b) - exacto(a) || (norm(b.nombre).startsWith(toks[0])) - (norm(a.nombre).startsWith(toks[0])) || a.nombre.localeCompare(b.nombre));
   return lim ? res.slice(0, lim) : res;
 }
 const sigCodigo = () => Math.max(100, ...S.clientes.map(c => num(c.codigo))) + 1;
@@ -799,50 +807,318 @@ function vLista() {
 }
 
 /* ===================== CLIENTES ===================== */
-const C = { q: '', filtro: 'todos', sel: null, abrir: false };
-function abrirFicha(id) { C.sel = id; C.abrir = true; if (location.hash === '#clientes') { C.abrir = false; vistaClientes(); window.scrollTo(0, 0); } else location.hash = '#clientes'; }
+const C = { q: '', filtro: 'todos', sel: null, abrir: false, modo: 'lista', lim: 300 };
+function abrirFicha(id) { C.sel = id; C.modo = 'lista'; C.abrir = true; if (location.hash === '#clientes') { C.abrir = false; vistaClientes(); window.scrollTo(0, 0); } else location.hash = '#clientes'; }
+function mapaSaldos() {
+  const m = new Map(S.clientes.map(c => [c.id, num(c.saldoInicial)]));
+  S.ventas.forEach(v => { if (!v.anulada && v.pago === 'CtaCte' && m.has(v.cliente)) m.set(v.cliente, m.get(v.cliente) + v.total); });
+  S.cobros.forEach(x => { if (!x.anulado && m.has(x.cliente)) m.set(x.cliente, m.get(x.cliente) - x.monto); });
+  return m;
+}
 function vistaClientes() {
+  if (C.modo === 'dups') return vistaRepetidos();
   if (C.sel && cli(C.sel)) return fichaCliente(cli(C.sel));
   C.sel = null;
-  const saldos = S.clientes.map(c => saldoCliente(c.id));
+  const sal = mapaSaldos(), saldos = [...sal.values()];
+  const nRep = gruposRepetidos().dup.length;
   $('#main').innerHTML = `
     <h1>Clientes</h1>
     <p class="sub">Buscá por código, nombre, dirección, número o teléfono. Tocá un cliente para ver su cuenta corriente.</p>
     <div class="kpis">
-      <div class="kpi dest"><div class="k">Total a cobrar</div><div class="v">${money(saldos.reduce((a, s) => a + Math.max(0, s), 0))}</div></div>
+      <div class="kpi dest"><div class="k">Clientes en total</div><div class="v">${S.clientes.length.toLocaleString('es-AR')}</div></div>
+      <a class="kpi" href="#clientes" id="kRep" style="text-decoration:none;color:inherit;${nRep ? 'border-color:var(--rojo)' : ''}"><div class="k">Posibles repetidos</div><div class="v" style="${nRep ? 'color:var(--rojo)' : ''}">${nRep} grupos</div></a>
+      <div class="kpi"><div class="k">Total a cobrar</div><div class="v">${money(saldos.reduce((a, s) => a + Math.max(0, s), 0))}</div></div>
       <div class="kpi"><div class="k">Clientes que deben</div><div class="v">${saldos.filter(s => s > 0).length}</div></div>
-      <div class="kpi"><div class="k">Recordatorios pendientes</div><div class="v">${S.recordatorios.filter(r => !r.hecho).length}</div></div>
-      <div class="kpi"><div class="k">Clientes</div><div class="v">${S.clientes.length}</div></div>
     </div>
+    ${S.ejemplo ? '<div class="aviso">Estos clientes son de ejemplo. Tocá <b>📥 Importar listado</b> para cargar el listado real desde un Excel o CSV. Los datos quedan solo en esta compu.</div>' : ''}
     <div class="card">
-      <div class="fila" style="align-items:center"><div style="flex:3"><input type="search" id="cQ" placeholder="🔎 Código, nombre, dirección, número o teléfono…" value="${esc(C.q)}" autocomplete="off"></div><div style="flex:0 0 auto"><button class="btn prim" id="cNuevo">+ Cliente nuevo</button></div></div>
+      <div class="fila" style="align-items:center"><div style="flex:3;min-width:220px"><input type="search" id="cQ" placeholder="🔎 Código, nombre, dirección, número o teléfono…" value="${esc(C.q)}" autocomplete="off"></div>
+        <div style="flex:0 0 auto;display:flex;gap:8px;flex-wrap:wrap"><button class="btn prim" id="cNuevo">+ Cliente nuevo</button><button class="btn" id="cImp">📥 Importar listado</button><button class="btn" id="cRep">🔍 Revisar repetidos${nRep ? ' (' + nRep + ')' : ''}</button></div></div>
       <div class="chips" style="margin-top:12px" id="cFil">${[['todos','Todos'],['deuda','Los que deben'],['final','Consumidor final'],['comercio','Comercios'],['subdist','Subdistribuidores']].map(([k, t]) => `<button class="chip ${C.filtro === k ? 'on' : ''}" data-f="${k}">${t}</button>`).join('')}</div>
       <div id="cLista" style="margin-top:14px"></div>
     </div>`;
   const q = $('#cQ');
-  q.oninput = () => { C.q = q.value; cLista(); };
+  q.oninput = () => { C.q = q.value; C.lim = 300; cLista(sal); };
   q.onkeydown = e => { if (e.key === 'Enter') { const f = $('#cLista tr[data-c]'); if (f) abrirFicha(f.dataset.c); } };
-  $('#cFil').querySelectorAll('[data-f]').forEach(b => b.onclick = () => { C.filtro = b.dataset.f; vistaClientes(); });
+  $('#cFil').querySelectorAll('[data-f]').forEach(b => b.onclick = () => { C.filtro = b.dataset.f; C.lim = 300; vistaClientes(); });
   $('#cNuevo').onclick = () => nuevoCliente(C.q, c => abrirFicha(c.id));
-  cLista(); q.focus();
+  $('#cImp').onclick = elegirArchivo;
+  $('#cRep').onclick = $('#kRep').onclick = e => { e.preventDefault(); C.modo = 'dups'; vistaClientes(); window.scrollTo(0, 0); };
+  cLista(sal); q.focus();
 }
-function cLista() {
+function cLista(sal) {
+  sal ||= mapaSaldos();
+  const ult = new Map(); S.cobros.forEach(x => { if (!x.anulado && (!ult.get(x.cliente) || ult.get(x.cliente) < x.fecha)) ult.set(x.cliente, x.fecha); });
+  const nrec = new Map(); S.recordatorios.forEach(r => { if (!r.hecho && r.cliente) nrec.set(r.cliente, (nrec.get(r.cliente) || 0) + 1); });
   let lista = C.q.trim() ? buscarClientes(C.q) : S.clientes.slice();
-  if (C.filtro === 'deuda') lista = lista.filter(c => saldoCliente(c.id) > 0).sort((a, b) => saldoCliente(b.id) - saldoCliente(a.id));
+  if (C.filtro === 'deuda') lista = lista.filter(c => sal.get(c.id) > 0).sort((a, b) => sal.get(b.id) - sal.get(a.id));
   else if (C.filtro !== 'todos') lista = lista.filter(c => c.categoria === C.filtro);
-  if (!C.q.trim() && C.filtro !== 'deuda') lista.sort((a, b) => num(a.codigo) - num(b.codigo));
-  const total = lista.length;
+  if (!C.q.trim() && C.filtro !== 'deuda') lista.sort((a, b) => (num(a.codigo) || 1e12) - (num(b.codigo) || 1e12) || String(a.codigo).localeCompare(String(b.codigo)));
+  const total = lista.length, lim = C.lim || 300;
   $('#cLista').innerHTML = !total ? '<div class="vacio">No se encontró ningún cliente.</div>' :
-    `<table class="tabla"><thead><tr><th>Código</th><th>Cliente</th><th class="ocultar-movil">Tipo</th><th class="num">Saldo</th><th class="ocultar-movil">Último pago</th></tr></thead><tbody>` +
-    lista.slice(0, 100).map(c => {
-      const s = saldoCliente(c.id), up = ultimoCobro(c.id), nrec = S.recordatorios.filter(r => !r.hecho && r.cliente === c.id).length;
-      return `<tr class="click" data-c="${c.id}"><td><span class="cod">${c.codigo}</span></td><td><b>${esc(c.nombre)}</b>${nrec ? ' 📌' : ''}<div class="muted" style="font-size:13px">${esc(c.dir || '')}${c.tel ? ' · ' + esc(c.tel) : ''}</div></td>
+    `<p class="muted" style="margin:0 0 8px;font-size:14px"><b>${total.toLocaleString('es-AR')}</b> cliente${total === 1 ? '' : 's'}${C.q.trim() || C.filtro !== 'todos' ? ' encontrados' : ''}</p>
+    <table class="tabla"><thead><tr><th>Código</th><th>Cliente</th><th class="ocultar-movil">Tipo</th><th class="num">Saldo</th><th class="ocultar-movil">Último pago</th></tr></thead><tbody>` +
+    lista.slice(0, lim).map(c => {
+      const s = sal.get(c.id) || 0, up = ult.get(c.id), nr = nrec.get(c.id);
+      return `<tr class="click" data-c="${c.id}"><td><span class="cod">${esc(c.codigo)}</span></td><td><b>${esc(c.nombre)}</b>${nr ? ' 📌' : ''}<div class="muted" style="font-size:13px">${esc(c.dir || '')}${c.tel ? ' · ' + esc(c.tel) : ''}${c.viejos?.length ? ' · antes: ' + c.viejos.map(esc).join(', ') : ''}</div></td>
         <td class="ocultar-movil">${catNombre(c.categoria)}</td>
         <td class="num">${s > 0 ? `<b class="deuda">${money(s)}</b>` : s < 0 ? `<span class="haber">a favor ${money(-s)}</span>` : '<span class="muted">—</span>'}</td>
-        <td class="ocultar-movil muted">${up ? esc(fmtFecha(up.fecha)) : '—'}</td></tr>`;
-    }).join('') + '</tbody></table>' + (total > 100 ? `<p class="muted">Mostrando 100 de ${total}. Usá el buscador.</p>` : '');
+        <td class="ocultar-movil muted">${up ? esc(fmtFecha(up)) : '—'}</td></tr>`;
+    }).join('') + '</tbody></table>' +
+    (total > lim ? `<div style="text-align:center;margin-top:12px"><button class="btn" id="cMas">Mostrar todos (${total.toLocaleString('es-AR')})</button></div>` : '');
   $('#cLista').querySelectorAll('tr[data-c]').forEach(tr => tr.onclick = () => abrirFicha(tr.dataset.c));
+  if ($('#cMas')) $('#cMas').onclick = () => { C.lim = 1e9; cLista(sal); };
 }
+
+/* ===================== Importar listado ===================== */
+function cargarSheetJS() {
+  return new Promise((ok, mal) => {
+    if (window.XLSX) return ok();
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = ok; s.onerror = () => mal(new Error('no se pudo cargar el lector de Excel'));
+    document.head.appendChild(s);
+  });
+}
+function elegirArchivo() {
+  const i = document.createElement('input');
+  i.type = 'file'; i.accept = '.xls,.xlsx,.csv,.txt,.ods';
+  i.onchange = () => i.files[0] && leerArchivo(i.files[0]);
+  i.click();
+}
+async function leerArchivo(f) {
+  toast('Leyendo ' + f.name + '…');
+  try {
+    await cargarSheetJS();
+    const buf = await f.arrayBuffer();
+    let wb;
+    if (/\.(csv|txt)$/i.test(f.name)) {
+      let txt; try { txt = new TextDecoder('utf-8', {fatal:true}).decode(buf); } catch (e) { txt = new TextDecoder('windows-1252').decode(buf); }
+      wb = XLSX.read(txt.replace(/^\uFEFF/, ''), {type:'string'});
+    } else wb = XLSX.read(buf, {type:'array'});
+    const hojas = wb.SheetNames.map(n => ({n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, defval:'', raw:false})}))
+      .filter(h => h.rows.length);
+    if (!hojas.length) return toast('El archivo está vacío');
+    hojas.sort((a, b) => b.rows.length - a.rows.length);
+    mapeoImport(hojas, 0, f.name);
+  } catch (e) { toast('No pude leer el archivo: ' + e.message); }
+}
+const CAMPOS_IMP = [
+  ['codigo', 'Código', /c[oó]d|^nro\.? ?cli|^n[°º] ?cli|^id$/],
+  ['nombre', 'Nombre', /nombre|raz[oó]n|apellido|^clientes?$|denomin/],
+  ['dir', 'Dirección (calle)', /direc|domic|calle/],
+  ['num', 'Número / altura', /^n[uú]m|^nro\.?$|altura|^n[°º]$/],
+  ['loc', 'Localidad', /local|ciudad|barrio/],
+  ['tel', 'Teléfono', /tel|cel|whats|m[oó]vil/],
+  ['saldo', 'Saldo / deuda', /saldo|deuda|debe/],
+];
+function detectarCabecera(rows) {
+  for (let r = 0; r < Math.min(15, rows.length); r++) {
+    const cells = rows[r].map(x => norm(x).trim());
+    if (CAMPOS_IMP.filter(([, , re]) => cells.some(c => re.test(c))).length >= 2) return r;
+  }
+  return -1;
+}
+function parseMonto(t) {
+  if (!t) return 0;
+  t = String(t).replace(/[^\d,.\-]/g, '');
+  if (t.includes(',') && t.lastIndexOf(',') > t.lastIndexOf('.')) t = t.replace(/\./g, '').replace(',', '.'); else t = t.replace(/,/g, '');
+  return Number(t) || 0;
+}
+function filaImport(r, map) {
+  const g = k => map[k] >= 0 ? String(r[map[k]] ?? '').trim() : '';
+  let dir = g('dir'); const n = g('num'), loc = g('loc');
+  if (n && !dir.includes(n)) dir = (dir + ' ' + n).trim();
+  if (loc) dir = dir ? dir + ', ' + loc : loc;
+  return {codigo: g('codigo').replace(/\.0+$/, ''), nombre: g('nombre').replace(/\s+/g, ' '), dir: dir.replace(/\s+/g, ' '), tel: g('tel'), saldo: parseMonto(g('saldo'))};
+}
+function mapeoImport(hojas, hi, archivo) {
+  const rows = hojas[hi].rows, hr = detectarCabecera(rows);
+  const ncols = Math.max(...rows.slice(0, 60).map(r => r.length));
+  const cab = Array.from({length:ncols}, (_, i) => hr >= 0 && String(rows[hr][i] ?? '').trim() ? String(rows[hr][i]).trim() : 'Columna ' + (i + 1));
+  const datos = rows.slice(hr >= 0 ? hr + 1 : 0).filter(r => r.some(x => String(x).trim()));
+  const map = {}, usadas = new Set();
+  CAMPOS_IMP.forEach(([k, , re]) => { const i = hr >= 0 ? cab.findIndex((c, j) => !usadas.has(j) && re.test(norm(c).trim())) : -1; map[k] = i; if (i >= 0) usadas.add(i); });
+  if (map.nombre < 0) { // sin cabecera: la columna con más texto es el nombre
+    const letras = cab.map((_, i) => datos.slice(0, 50).reduce((a, r) => a + (/[a-z]{3}/i.test(String(r[i] ?? '')) ? 1 : 0), 0));
+    map.nombre = letras.indexOf(Math.max(...letras));
+  }
+  const opts = sel => '<option value="-1">— no usar —</option>' + cab.map((c, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${esc(c)}</option>`).join('');
+  const m = modal(`<h2>📥 Importar clientes</h2>
+    <p class="muted" style="margin-top:0">${esc(archivo)} · <b>${datos.length.toLocaleString('es-AR')}</b> filas${hojas.length > 1 ? ` · Hoja: <select id="iH" style="width:auto;padding:4px 8px">${hojas.map((x, i) => `<option value="${i}" ${i === hi ? 'selected' : ''}>${esc(x.n)} (${x.rows.length})</option>`).join('')}</select>` : ''}</p>
+    <p style="font-size:14px;margin-bottom:8px">Fijate que cada dato salga de la columna correcta:</p>
+    <div class="fila">${CAMPOS_IMP.map(([k, t]) => `<div style="min-width:130px"><label class="campo">${t}</label><select data-m="${k}">${opts(map[k])}</select></div>`).join('')}</div>
+    <p class="muted" style="font-size:13px;margin:14px 0 6px">Así van a quedar los primeros:</p>
+    <div id="iPrev" class="scroll"></div>
+    ${S.ejemplo ? '<label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-size:14px"><input type="checkbox" id="iRep" checked style="width:20px;height:20px"> Borrar los clientes y ventas de ejemplo</label>' : ''}
+    <div class="fila" style="margin-top:18px"><button class="btn" id="iNo">Cancelar</button><button class="btn prim" id="iSi">Importar ${datos.length.toLocaleString('es-AR')} clientes</button></div>`);
+  m.querySelector('.caja').style.maxWidth = '960px';
+  m.querySelector('.caja').style.maxHeight = '92vh';
+  m.querySelector('.caja').style.overflowY = 'auto';
+  const prev = () => {
+    const f = datos.slice(0, 6).map(r => filaImport(r, map));
+    m.querySelector('#iPrev').innerHTML = `<table class="tabla"><thead><tr><th>Código</th><th>Nombre</th><th>Dirección</th><th>Teléfono</th><th class="num">Saldo</th></tr></thead><tbody>${f.map(x => `<tr><td>${esc(x.codigo)}</td><td>${esc(x.nombre)}</td><td>${esc(x.dir)}</td><td>${esc(x.tel)}</td><td class="num">${x.saldo ? money(x.saldo) : ''}</td></tr>`).join('')}</tbody></table>`;
+  };
+  m.querySelectorAll('[data-m]').forEach(s => s.onchange = () => { map[s.dataset.m] = Number(s.value); prev(); });
+  if (m.querySelector('#iH')) m.querySelector('#iH').onchange = e => mapeoImport(hojas, Number(e.target.value), archivo);
+  prev();
+  m.querySelector('#iNo').onclick = cerrarModal;
+  m.querySelector('#iSi').onclick = () => {
+    if (map.nombre < 0) return toast('Elegí la columna del nombre');
+    const nuevos = datos.map(r => filaImport(r, map)).filter(x => x.nombre);
+    if (S.ejemplo && m.querySelector('#iRep')?.checked) {
+      S.clientes = []; S.ventas = []; S.cobros = []; S.recordatorios = S.recordatorios.filter(r => !r.cliente);
+      S.seq.venta = 0; S.seq.cobro = 0; S.noDup = []; S.dirOk = []; S.unificaciones = [];
+    }
+    S.ejemplo = false;
+    let sig = sigCodigo();
+    nuevos.forEach(x => S.clientes.push({id:nid(), codigo: x.codigo === '' ? sig++ : (/^\d+$/.test(x.codigo) ? Number(x.codigo) : x.codigo),
+      nombre:x.nombre, dir:x.dir, tel:x.tel, categoria:'final', saldoInicial:x.saldo || 0, limite:0, precios:{}}));
+    guardar(); cerrarModal();
+    C.modo = 'lista'; C.q = ''; C.filtro = 'todos'; C.lim = 300; vistaClientes();
+    toast('Se cargaron ' + nuevos.length.toLocaleString('es-AR') + ' clientes. Encontré ' + gruposRepetidos().dup.length + ' grupos de posibles repetidos.');
+  };
+}
+
+/* ===================== Repetidos ===================== */
+const STOP = new Set(['de','del','la','las','los','el','y','e','sr','sra','srta','don','dona','sa','srl','sas','flia','familia']);
+const claveNombre = n => norm(n).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(t => t && !STOP.has(t)).sort().join(' ');
+const ABREV = [[/\b(piso|dpto|depto|dto|departamento)\b.*$/, ''], [/\b(boulevard|boulevar|bulevar|bv|blvd)\b/g, 'bv'], [/\b(avenida|avda|av)\b/g, 'av'],
+  [/\b(pasaje|pje|psje)\b/g, 'pje'], [/\b(general|gral)\b/g, 'gral'], [/\b(doctor|dr)\b/g, 'dr'], [/\b(calle|numero|nro|n|no)\b/g, '']];
+function claveDir(d) {
+  let x = norm(d).replace(/[.,°º#\/\-]/g, ' ');
+  ABREV.forEach(([re, r]) => x = x.replace(re, r));
+  x = x.replace(/\s+/g, ' ').trim();
+  return /\d/.test(x) && x.length >= 5 ? x : '';
+}
+const claveTel = t => { const d = String(t || '').replace(/\D/g, ''); return d.length >= 7 ? d.slice(-8) : ''; };
+function gruposRepetidos() {
+  const cs = S.clientes, par = cs.map((_, i) => i);
+  const find = i => par[i] === i ? i : (par[i] = find(par[i]));
+  const unir = (a, b) => { a = find(a); b = find(b); if (a !== b) par[a] = b; };
+  const kN = cs.map(c => claveNombre(c.nombre)), kD = cs.map(c => claveDir(c.dir)), kT = cs.map(c => claveTel(c.tel));
+  const ign = new Set(S.noDup || []), dirOk = new Set(S.dirOk || []);
+  const pk = (i, j) => [cs[i].id, cs[j].id].sort().join('|');
+  const idx = keys => { const m = new Map(); keys.forEach((k, i) => { if (k) { if (!m.has(k)) m.set(k, []); m.get(k).push(i); } }); return m; };
+  const mN = idx(kN), mD = idx(kD), mT = idx(kT), mC = idx(cs.map(c => String(c.codigo)));
+  const link = (arr, cond) => { for (let a = 0; a < arr.length; a++) for (let b = a + 1; b < arr.length; b++) { const i = arr[a], j = arr[b]; if (!ign.has(pk(i, j)) && (!cond || cond(i, j))) unir(i, j); } };
+  mN.forEach(a => { if (a.length > 1 && a.length < 40) link(a); });
+  mT.forEach(a => { if (a.length > 1 && a.length < 15) link(a); });
+  mC.forEach(a => { if (a.length > 1) link(a); });
+  const tok = i => kN[i].split(' ').filter(t => t.length >= 3);
+  mD.forEach(a => { if (a.length > 1 && a.length < 60) link(a, (i, j) => { const A = new Set(tok(i)); return tok(j).some(t => A.has(t)); }); });
+  const g = new Map(); cs.forEach((c, i) => { const r = find(i); if (!g.has(r)) g.set(r, []); g.get(r).push(i); });
+  const dup = [];
+  g.forEach(a => {
+    if (a.length < 2) return;
+    const mismoNombre = a.every(i => kN[i] === kN[a[0]]);
+    const seguro = (mismoNombre && (a.every(i => kD[i] && kD[i] === kD[a[0]]) || a.every(i => kT[i] && kT[i] === kT[a[0]]))) || a.every(i => String(cs[i].codigo) === String(cs[a[0]].codigo));
+    dup.push({ids: a.map(i => cs[i].id), seguro});
+  });
+  const dirs = [];
+  mD.forEach((a, k) => { if (!dirOk.has(k) && new Set(a.map(find)).size > 1) dirs.push({clave:k, ids:a.map(i => cs[i].id)}); });
+  dup.sort((a, b) => b.seguro - a.seguro || b.ids.length - a.ids.length);
+  dirs.sort((a, b) => b.ids.length - a.ids.length);
+  return {dup, dirs};
+}
+function elegirPrincipal(ids, nv) {
+  const pts = c => (c.dir ? 2 : 0) + (c.tel ? 2 : 0) + (nv.get(c.id) || 0) * 3;
+  return ids.map(cli).sort((a, b) => pts(b) - pts(a) || (num(a.codigo) || 1e12) - (num(b.codigo) || 1e12))[0].id;
+}
+function foto() { return JSON.stringify({clientes:S.clientes, ventas:S.ventas, cobros:S.cobros, recordatorios:S.recordatorios, unificaciones:S.unificaciones || [], noDup:S.noDup || [], dirOk:S.dirOk || []}); }
+function volverFoto(f) { Object.assign(S, JSON.parse(f)); guardar(); }
+function unificar(keepId, ids) {
+  const k = cli(keepId), otros = ids.filter(i => i !== keepId).map(cli).filter(Boolean);
+  if (!otros.length) return 0;
+  const set = new Set(otros.map(o => o.id));
+  S.ventas.forEach(v => { if (set.has(v.cliente)) v.cliente = k.id; });
+  S.cobros.forEach(x => { if (set.has(x.cliente)) x.cliente = k.id; });
+  S.recordatorios.forEach(r => { if (set.has(r.cliente)) r.cliente = k.id; });
+  otros.forEach(o => {
+    k.saldoInicial = num(k.saldoInicial) + num(o.saldoInicial);
+    if (!k.dir) k.dir = o.dir;
+    if (!k.tel) k.tel = o.tel; else if (o.tel && claveTel(o.tel) !== claveTel(k.tel) && !k.tel.includes(o.tel)) k.tel += ' / ' + o.tel;
+    k.viejos = [...new Set([...(k.viejos || []), ...(String(o.codigo) !== String(k.codigo) ? [o.codigo] : []), ...(o.viejos || [])])];
+  });
+  S.clientes = S.clientes.filter(c => !set.has(c.id));
+  (S.unificaciones ||= []).push({fecha:hoy(), queda:{codigo:k.codigo, nombre:k.nombre}, eliminados:otros.map(o => ({codigo:o.codigo, nombre:o.nombre, dir:o.dir}))});
+  return otros.length;
+}
+function vistaRepetidos() {
+  const {dup, dirs} = gruposRepetidos(), seg = dup.filter(g => g.seguro);
+  const nv = new Map(); S.ventas.forEach(v => { if (!v.anulada) nv.set(v.cliente, (nv.get(v.cliente) || 0) + 1); });
+  const sal = mapaSaldos();
+  C.tabRep ||= 'dup'; C.limRep ||= 40;
+  const unif = S.unificaciones || [];
+  $('#main').innerHTML = `
+    <button class="btn chico" id="rVolver">← Volver al listado</button>
+    <h1 style="margin-top:14px">Revisar clientes repetidos</h1>
+    <p class="sub">En cada grupo elegí cuál queda (●) y destildá los que no son repetidos. Al unificar, las ventas, cobros y saldos pasan al que queda, y los códigos viejos se siguen pudiendo buscar.</p>
+    <div class="kpis">
+      <div class="kpi dest"><div class="k">Clientes en total</div><div class="v">${S.clientes.length.toLocaleString('es-AR')}</div></div>
+      <div class="kpi"><div class="k">Grupos de repetidos</div><div class="v">${dup.length}</div></div>
+      <div class="kpi"><div class="k">Seguros (mismo nombre y dirección/teléfono)</div><div class="v">${seg.length}</div></div>
+      <div class="kpi"><div class="k">Direcciones con varios clientes</div><div class="v">${dirs.length}</div></div>
+      <div class="kpi"><div class="k">Fichas ya eliminadas</div><div class="v">${unif.reduce((a, u) => a + u.eliminados.length, 0)}</div></div>
+    </div>
+    <div class="card">
+      <div class="seccion-tit"><div class="chips" id="rTabs">${[['dup', `Clientes repetidos (${dup.length})`], ['dirs', `Misma dirección (${dirs.length})`], ['hechos', `Ya unificados (${unif.length})`]].map(([k, t]) => `<button class="chip ${C.tabRep === k ? 'on' : ''}" data-t="${k}">${t}</button>`).join('')}</div>
+        ${C.tabRep === 'dup' && seg.length ? `<button class="btn prim" id="rTodos">Unificar los ${seg.length} seguros</button>` : ''}
+        ${C.tabRep === 'hechos' && unif.length ? '<button class="btn" id="rCopiar">📋 Copiar tabla de códigos viejo → nuevo</button>' : ''}</div>
+      <div id="rCuerpo" style="margin-top:14px"></div>
+    </div>`;
+  $('#rVolver').onclick = () => { C.modo = 'lista'; vistaClientes(); };
+  $('#rTabs').querySelectorAll('[data-t]').forEach(b => b.onclick = () => { C.tabRep = b.dataset.t; C.limRep = 40; vistaRepetidos(); });
+  const cuerpo = $('#rCuerpo');
+  const refrescar = () => { const y = window.scrollY; vistaRepetidos(); window.scrollTo(0, y); };
+  if (C.tabRep === 'hechos') {
+    cuerpo.innerHTML = unif.length ? `<table class="tabla"><thead><tr><th>Fecha</th><th>Quedó</th><th>Se unieron (eliminados)</th></tr></thead><tbody>${unif.slice().reverse().map(u => `<tr><td>${esc(fmtFecha(u.fecha))}</td><td><span class="cod">${esc(u.queda.codigo)}</span> <b>${esc(u.queda.nombre)}</b></td><td>${u.eliminados.map(e => `<span class="cod">${esc(e.codigo)}</span> ${esc(e.nombre)}`).join('<br>')}</td></tr>`).join('')}</tbody></table>` : '<div class="vacio">Todavía no se unificó ningún cliente.</div>';
+    if ($('#rCopiar')) $('#rCopiar').onclick = () => copiarTexto('Código viejo\tNombre viejo\tCódigo nuevo\tNombre nuevo\n' + unif.flatMap(u => u.eliminados.map(e => [e.codigo, e.nombre, u.queda.codigo, u.queda.nombre].join('\t'))).join('\n'), 'Tabla copiada. Pegala en Excel con Ctrl+V');
+    return;
+  }
+  const grupos = C.tabRep === 'dup' ? dup : dirs;
+  if (!grupos.length) { cuerpo.innerHTML = `<div class="vacio">${C.tabRep === 'dup' ? '🎉 No hay clientes repetidos.' : 'No hay direcciones con varios clientes para revisar.'}</div>`; return; }
+  cuerpo.innerHTML = grupos.slice(0, C.limRep).map((g, gi) => {
+    const keep = elegirPrincipal(g.ids, nv);
+    const etiqueta = C.tabRep === 'dup' ? (g.seguro ? '<span class="badge-ok">Seguro: es el mismo cliente</span>' : '<span class="tag" style="background:#fff3c4">Revisar: se parecen</span>') : `<span class="tag">📍 ${esc(cli(g.ids[0]).dir)} · ${g.ids.length} clientes</span>`;
+    return `<div class="grupo-dup" data-g="${gi}">
+      <div class="seccion-tit" style="margin-bottom:6px">${etiqueta}<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn chico" data-no>${C.tabRep === 'dup' ? 'No son el mismo' : 'Están bien así'}</button><button class="btn chico prim" data-unir>Unificar marcados</button></div></div>
+      <div class="scroll"><table class="tabla"><thead><tr><th title="Repetido">Incl.</th><th>Queda</th><th>Código</th><th>Nombre</th><th>Dirección</th><th class="ocultar-movil">Teléfono</th><th class="num">Ventas</th><th class="num">Saldo</th></tr></thead><tbody>
+      ${g.ids.map(id => { const c = cli(id); return `<tr><td><input type="checkbox" data-inc="${id}" ${C.tabRep === 'dup' ? 'checked' : (id === keep ? 'checked' : '')} style="width:20px;height:20px"></td><td><input type="radio" name="k${gi}" value="${id}" ${id === keep ? 'checked' : ''} style="width:20px;height:20px"></td>
+        <td><span class="cod">${esc(c.codigo)}</span></td><td><b>${esc(c.nombre)}</b></td><td>${esc(c.dir || '')}</td><td class="ocultar-movil">${esc(c.tel || '')}</td><td class="num">${nv.get(id) || 0}</td><td class="num">${money(sal.get(id) || 0)}</td></tr>`; }).join('')}
+      </tbody></table></div></div>`;
+  }).join('') + (grupos.length > C.limRep ? `<div style="text-align:center"><button class="btn" id="rMas">Mostrar más (${grupos.length - C.limRep} grupos más)</button></div>` : '');
+  if ($('#rMas')) $('#rMas').onclick = () => { C.limRep += 60; refrescar(); };
+  cuerpo.querySelectorAll('.grupo-dup').forEach(el => {
+    const g = grupos[Number(el.dataset.g)];
+    el.querySelectorAll('input[type=radio]').forEach(r => r.onchange = () => { const cb = el.querySelector(`[data-inc="${r.value}"]`); cb.checked = true; });
+    el.querySelector('[data-unir]').onclick = () => {
+      const keep = el.querySelector('input[type=radio]:checked').value;
+      const ids = [...el.querySelectorAll('[data-inc]:checked')].map(x => x.dataset.inc);
+      if (!ids.includes(keep)) ids.push(keep);
+      if (ids.length < 2) return toast('Marcá al menos dos clientes para unificar');
+      const f = foto(); const n = unificar(keep, ids);
+      // los que se destildaron no son repetidos del que queda
+      g.ids.filter(id => !ids.includes(id)).forEach(id => (S.noDup ||= []).push([keep, id].sort().join('|')));
+      guardar(); refrescar();
+      toast(`Unificado: quedó ${cli(keep).codigo} ${cli(keep).nombre} (se eliminaron ${n} fichas)`, () => { volverFoto(f); refrescar(); });
+    };
+    el.querySelector('[data-no]').onclick = () => {
+      const f = foto();
+      if (C.tabRep === 'dup') { for (let a = 0; a < g.ids.length; a++) for (let b = a + 1; b < g.ids.length; b++) (S.noDup ||= []).push([g.ids[a], g.ids[b]].sort().join('|')); }
+      else (S.dirOk ||= []).push(g.clave);
+      guardar(); refrescar();
+      toast('Listo, no se va a volver a mostrar', () => { volverFoto(f); refrescar(); });
+    };
+  });
+  if ($('#rTodos')) $('#rTodos').onclick = () => confirmar(`¿Unificar los ${seg.length} grupos seguros? En cada uno queda la ficha con más datos.`, 'Sí, unificar', () => {
+    const f = foto(); let n = 0;
+    seg.forEach(g => { n += unificar(elegirPrincipal(g.ids, nv), g.ids); });
+    guardar(); refrescar();
+    toast(`Listo: se unificaron ${seg.length} grupos y se eliminaron ${n} fichas repetidas`, () => { volverFoto(f); refrescar(); });
+  });
+}
+
 function fichaCliente(c) {
   const s = saldoCliente(c.id), up = ultimoCobro(c.id);
   $('#main').innerHTML = `
@@ -1174,7 +1450,7 @@ function vistaDatos() {
     </div>`;
   dPrecios(); dProd(); dEmp(); dVeh(); dLug();
   $('#dVaciar').onclick = () => confirmar('¿Borrar todas las ventas, gastos, horas, clientes, compras, pagos y conteos?', 'Sí, borrar todo', () => {
-    S = {...S, clientes:[], ventas:[], cobros:[], recordatorios:[], seq:{venta:0, cobro:0}, gastos:[], horas:[], compras:[], pagos:[], stock:{}, prestamos:[], proveedor:{...S.proveedor, saldoInicial:0}};
+    S = {...S, ejemplo:false, noDup:[], dirOk:[], unificaciones:[], clientes:[], ventas:[], cobros:[], recordatorios:[], seq:{venta:0, cobro:0}, gastos:[], horas:[], compras:[], pagos:[], stock:{}, prestamos:[], proveedor:{...S.proveedor, saldoInicial:0}};
     guardar(); vistaDatos(); toast('Listo, quedó vacío');
   });
   $('#dEjemplo').onclick = () => confirmar('¿Reemplazar todo por los datos de ejemplo?', 'Sí, reemplazar', () => { S = datosEjemplo(); guardar(); vistaDatos(); toast('Datos de ejemplo cargados'); });
