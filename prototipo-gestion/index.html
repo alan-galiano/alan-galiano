@@ -269,9 +269,9 @@ function datosEjemplo() {
       {id:'g10', nombre:'Garrafa 10 kg', precio:32990, envase:true},
       {id:'g15', nombre:'Garrafa 15 kg', precio:47990, envase:true},
       {id:'g45', nombre:'Cilindro 45 kg', precio:114990, envase:true},
-      {id:'agua', nombre:'Bidón agua 20 L', precio:4500, envase:false},
+      {id:'c15', nombre:'Clark 15 kg (autoelevador)', precio:52990, envase:true},
     ],
-    listas: {comercio:{g10:29990, g15:43990, g45:104990}, subdist:{g10:26500, g15:38900, g45:94000}},
+    listas: {comercio:{g10:29990, g15:43990, g45:104990, c15:48990}, subdist:{g10:26500, g15:38900, g45:94000, c15:44500}},
     empleados: [
       {id:nid(), nombre:'Ramón (chofer)', valorHora:5200, chofer:true},
       {id:nid(), nombre:'Diego (chofer)', valorHora:5200, chofer:true},
@@ -304,9 +304,9 @@ function datosEjemplo() {
       if (p < .55) items.push({p:'g10', c:(1 + Math.floor(rnd() * 3)) * m});
       else if (p < .85) items.push({p:'g15', c:(1 + Math.floor(rnd() * 2)) * m});
       else items.push({p:'g45', c:(1 + Math.floor(rnd() * 2)) * (sub ? 3 : 1)});
-      if (!sub && rnd() < .25) items.push({p:'agua', c:1 + Math.floor(rnd() * 3)});
+      if (!sub && c.categoria !== 'final' && rnd() < .2) items.push({p:'c15', c:1 + Math.floor(rnd() * 3)});
       items.forEach(it => it.pr = pr(c, it.p));
-      const env = items.filter(it => it.p !== 'agua').reduce((a, it) => a + it.c, 0);
+      const env = items.reduce((a, it) => a + it.c, 0);
       const pago = sub ? (rnd() < .8 ? 'CtaCte' : 'Transferencia') : com ? (rnd() < .55 ? 'CtaCte' : pick(pagos)) : pick(pagos);
       S.ventas.push({id:nid(), nro:++nro, fecha:f, cliente:c.id, items, pago, env, chofer:pick(choferes).id,
         total: items.reduce((a, it) => a + it.c * it.pr, 0)});
@@ -359,7 +359,7 @@ function migrar(S) {
 }
 
 /* ===================== PROVEEDOR y ENVASES: datos ===================== */
-const ENV = [{k:'10', t:'10 kg', kg:10}, {k:'15', t:'15 kg', kg:15}, {k:'45', t:'45 kg', kg:45}, {k:'c15', t:'15 kg C', kg:15}];
+const ENV = [{k:'10', t:'10 kg', kg:10}, {k:'15', t:'15 kg', kg:15}, {k:'45', t:'45 kg', kg:45}, {k:'c15', t:'Clark 15', kg:15}];
 const num = v => Number(v) || 0;
 function calcCompra(q, pr, imp) {
   const neto = ENV.reduce((a, e) => a + num(q[e.k]) * num(pr[e.k]), 0);
@@ -419,6 +419,14 @@ function agregarExtras(S) {
 let S;
 try { S = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
 if (!S || !S.clientes) S = datosEjemplo();
+// Ya no se vende agua: los datos de ejemplo se regeneran; en datos reales se quita el producto y se agrega Clark.
+if (S.productos?.some(p => p.id === 'agua')) {
+  if (S.ejemplo !== false && S.clientes.some(c => c.nombre === 'Panadería La Espiga')) S = datosEjemplo();
+  else {
+    S.productos = S.productos.filter(p => p.id !== 'agua');
+    if (!S.productos.some(p => p.id === 'c15')) S.productos.push({id:'c15', nombre:'Clark 15 kg (autoelevador)', precio:52990, envase:true});
+  }
+}
 if (!S.lugares) agregarExtras(S);
 migrar(S);
 function guardar() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
