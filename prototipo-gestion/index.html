@@ -617,20 +617,89 @@ function nuevoCliente(texto, despues) {
   const esCod = /^\d+$/.test(texto.trim());
   const m = modal(`<h2>Cliente nuevo</h2>
     <div class="fila"><div style="flex:0 0 110px;min-width:0"><label class="campo">Código</label><input type="number" id="ncC" value="${esCod ? esc(texto.trim()) : sigCodigo()}"></div><div><label class="campo">Nombre</label><input type="text" id="ncN" value="${esCod ? '' : esc(texto)}"></div></div>
-    <div class="fila" style="margin-top:12px"><div><label class="campo">Dirección</label><input type="text" id="ncD"></div><div><label class="campo">Teléfono</label><input type="text" id="ncT"></div></div>
+    <div style="margin-top:12px" id="ncDir"></div>
+    <div style="margin-top:8px"><label class="campo">Teléfono</label><input type="text" id="ncT"></div>
     <div style="margin-top:12px"><label class="campo">Tipo de cliente</label><select id="ncK">${CATS.map(k => `<option value="${k.id}" ${k.id === 'final' ? 'selected' : ''}>${k.nombre}</option>`).join('')}</select></div>
     <div class="fila" style="margin-top:18px"><button class="btn" id="ncNo">Cancelar</button><button class="btn prim" id="ncSi">Guardar cliente</button></div>`);
-  m.querySelector(esCod || texto ? (esCod ? '#ncN' : '#ncD') : '#ncN').focus();
+  const dirCampo = campoDireccion(m.querySelector('#ncDir'), '');
+  m.querySelector('.caja').style.maxWidth = '640px';
+  m.querySelector(esCod || !texto ? '#ncN' : '#ncDir [data-d="calle"]').focus();
   m.querySelector('#ncNo').onclick = cerrarModal;
   m.querySelector('#ncSi').onclick = () => {
     const n = m.querySelector('#ncN').value.trim(), cod = num(m.querySelector('#ncC').value);
     if (!n) return m.querySelector('#ncN').focus();
     if (!cod || S.clientes.some(c => num(c.codigo) === cod)) { toast('Ese código ya lo tiene otro cliente'); return m.querySelector('#ncC').focus(); }
-    const c = {id:nid(), codigo:cod, nombre:n, dir:m.querySelector('#ncD').value.trim(), tel:m.querySelector('#ncT').value.trim(), categoria:m.querySelector('#ncK').value, saldoInicial:0, limite:0, precios:{}};
+    const c = {id:nid(), codigo:cod, nombre:n, dir:dirCampo.valor().replace(/^, /, '').trim(), tel:m.querySelector('#ncT').value.trim(), categoria:m.querySelector('#ncK').value, saldoInicial:0, limite:0, precios:{}};
     S.clientes.push(c); guardar(); cerrarModal();
     toast('Cliente ' + cod + ' “' + n + '” creado');
     despues && despues(c);
   };
+}
+
+
+/* ===================== Campo de dirección con calles oficiales ===================== */
+const LOCALIDADES = [['SANTA FE','Santa Fe'],['SANTO TOME','Santo Tomé'],['RECREO','Recreo'],['SAN JOSE DEL RINCON','San José del Rincón'],['SAUCE VIEJO','Sauce Viejo'],['MONTE VERA','Monte Vera'],['ARROYO LEYES','Arroyo Leyes']];
+function buscarCalles(texto, loc, max = 8) {
+  const L = indiceOficial()[LOC_OFICIAL[norm(loc || 'santa fe').trim()] || ''] || [];
+  const fy = w => fon(w).replace(/^y(?=[^aeiou])/, 'i');   // "irig" encuentra "YRIGOYEN"
+  const toks = norm(texto).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean).map(fy);
+  if (!toks.length) return [];
+  const res = [];
+  L.forEach(o => {
+    const ws = palabrasCalle(o.nombre).map(fy);
+    if (!toks.every(t => ws.some(w => w.startsWith(t)))) return;
+    const n = fon(norm(o.nombre).replace(/[^a-z0-9 ]/g, ' '));
+    res.push({o, rank: n.startsWith(toks.join(' ')) ? 0 : ws.some(w => w.startsWith(toks[0])) ? 1 : 2});
+  });
+  return res.sort((a, b) => a.rank - b.rank || a.o.nombre.localeCompare(b.o.nombre)).slice(0, max).map(x => x.o);
+}
+// Arma el campo de dirección (calle con sugerencias + número + piso/depto + localidad) dentro de "box".
+// onCambio(direccionCompleta) se llama cada vez que cambia algo.
+function campoDireccion(box, valor, onCambio) {
+  const p = partesDir(valor || '');
+  const locIni = (p.loc || 'SANTA FE').toUpperCase();
+  const locSel = LOCALIDADES.some(([v]) => norm(v) === norm(locIni)) ? LOCALIDADES.find(([v]) => norm(v) === norm(locIni))[0] : (p.loc ? 'OTRA' : 'SANTA FE');
+  box.innerHTML = `<div class="fila" style="gap:8px">
+      <div style="flex:3;min-width:180px"><label class="campo">Calle</label><div class="buscador"><input type="text" data-d="calle" value="${esc(p.nro ? p.calle : (valor ? p.calle : ''))}" placeholder="Escribí las primeras letras…" autocomplete="off"><div data-d="sug"></div></div></div>
+      <div style="flex:1;min-width:80px"><label class="campo">Número</label><input type="text" data-d="nro" value="${esc(p.nro || '')}" inputmode="numeric"></div>
+      <div style="flex:1;min-width:90px"><label class="campo">Piso / depto</label><input type="text" data-d="resto" value="${esc(p.resto || '')}"></div>
+      <div style="flex:2;min-width:150px"><label class="campo">Localidad</label><select data-d="loc">${LOCALIDADES.map(([v, t]) => `<option value="${v}" ${v === locSel ? 'selected' : ''}>${t}</option>`).join('')}<option value="OTRA" ${locSel === 'OTRA' ? 'selected' : ''}>Otra${locSel === 'OTRA' ? ' (' + esc(p.loc) + ')' : ''}</option></select></div>
+    </div><div data-d="nota" class="muted" style="font-size:12px;margin-top:4px;min-height:16px"></div>`;
+  const $d = k => box.querySelector(`[data-d="${k}"]`);
+  const locActual = () => $d('loc').value === 'OTRA' ? (locSel === 'OTRA' ? p.loc : '') : $d('loc').value;
+  const armar = () => { const calle = $d('calle').value.trim().toUpperCase(), nro = $d('nro').value.trim(), resto = $d('resto').value.trim().toUpperCase(), loc = locActual();
+    return [calle, nro, resto].filter(Boolean).join(' ') + (loc ? ', ' + loc : ''); };
+  const nota = () => {
+    const calle = $d('calle').value.trim(), loc = locActual(), L = indiceOficial()[LOC_OFICIAL[norm(loc).trim()] || ''];
+    if (!calle) return $d('nota').innerHTML = '';
+    if (!L) return $d('nota').innerHTML = 'Localidad sin listado oficial: se guarda como está escrita.';
+    const ok = L.some(o => norm(o.nombre) === norm(calle));
+    $d('nota').innerHTML = ok ? '<span style="color:var(--verde)">✓ Calle oficial</span>' : '<span style="color:#9a5b00">⚠️ No está en el listado oficial de calles de ' + esc(LOC_OFICIAL[norm(loc).trim()]) + '. Elegila de la lista si podés.</span>';
+  };
+  let sel = 0, lista = [];
+  const pintar = () => {
+    const t = $d('calle').value;
+    lista = /\d/.test(t) ? [] : buscarCalles(t, locActual());
+    if (lista.length === 1 && norm(lista[0].nombre) === norm(t)) lista = [];
+    if (sel >= lista.length) sel = 0;
+    $d('sug').innerHTML = lista.length ? '<div class="sugerencias">' + lista.map((o, i) => `<div class="sug ${i === sel ? 'sel' : ''}" data-i="${i}"><b>${esc(o.nombre)}</b></div>`).join('') + '</div>' : '';
+    $d('sug').querySelectorAll('.sug').forEach(el => { el.onmousedown = e => { e.preventDefault(); elegir(+el.dataset.i); }; });
+  };
+  const cambio = () => { nota(); onCambio && onCambio(armar()); };
+  const elegir = i => { $d('calle').value = lista[i].nombre; lista = []; $d('sug').innerHTML = ''; cambio(); $d('nro').focus(); };
+  $d('calle').oninput = () => { sel = 0; pintar(); $d('nota').innerHTML = ''; };   // el aviso aparece al terminar de escribir, no mientras
+  $d('calle').onkeydown = e => {
+    if (!lista.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, lista.length - 1); pintar(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); pintar(); }
+    else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); elegir(sel); }
+    else if (e.key === 'Escape') { lista = []; $d('sug').innerHTML = ''; }
+  };
+  $d('calle').onblur = () => setTimeout(() => { $d('sug').innerHTML = ''; }, 150);
+  $d('calle').onchange = cambio;
+  ['nro', 'resto', 'loc'].forEach(k => $d(k).onchange = () => { if (k === 'loc') pintar(); cambio(); });
+  nota();
+  return {valor: armar};
 }
 
 /* ===================== Recordatorios ===================== */
@@ -1487,12 +1556,14 @@ function fDatos(c, re) {
   const box = $('#fDatos');
   box.innerHTML = `<h2>Datos del cliente</h2>
     <div class="fila"><div style="flex:0 0 100px;min-width:0"><label class="campo">Código</label><input type="number" data-k="codigo" value="${c.codigo}"></div><div><label class="campo">Nombre</label><input type="text" data-k="nombre" value="${esc(c.nombre)}"></div></div>
-    <div class="fila" style="margin-top:10px"><div><label class="campo">Dirección</label><input type="text" data-k="dir" value="${esc(c.dir || '')}">${c.dirOriginal && c.dirOriginal !== c.dir ? `<div class="muted" style="font-size:12px;margin-top:2px">Antes: ${esc(c.dirOriginal)}</div>` : ''}</div><div><label class="campo">Teléfono</label><input type="text" data-k="tel" value="${esc(c.tel || '')}"></div></div>
+    <div style="margin-top:10px"><div id="fDir"></div>${c.dirOriginal && c.dirOriginal !== c.dir ? `<div class="muted" style="font-size:12px;margin-top:2px">Antes: ${esc(c.dirOriginal)}</div>` : ''}</div>
+    <div class="fila" style="margin-top:10px"><div><label class="campo">Teléfono</label><input type="text" data-k="tel" value="${esc(c.tel || '')}"></div></div>
     <div class="fila" style="margin-top:10px"><div><label class="campo">Tipo de cliente</label><select data-k="categoria">${CATS.map(k => `<option value="${k.id}" ${c.categoria === k.id ? 'selected' : ''}>${k.nombre}</option>`).join('')}</select></div><div><label class="campo">Límite de crédito ($, 0 = sin límite)</label><input type="number" data-k="limite" value="${num(c.limite)}"></div></div>
     <div style="margin-top:10px"><label class="campo">Saldo anterior (lo que debía en el sistema viejo)</label><input type="number" data-k="saldoInicial" value="${num(c.saldoInicial)}"></div>
     <label class="campo" style="margin-top:14px">Precios de este cliente <span style="font-weight:500">(se actualizan solos con lo que se le cobra en cada venta)</span></label>
     <div class="cant4">${S.productos.map(p => `<div><label class="campo" style="font-size:12px">${esc(p.nombre)}</label><input type="number" data-precio="${p.id}" value="${num(c.precios?.[p.id]) || ''}" placeholder="sugerido ${p.precio}" style="font-size:15px;font-weight:600">${num(c.precios?.[p.id]) && num(p.costo) ? `<div class="muted" style="font-size:12px;margin-top:2px">ganancia ${money(num(c.precios[p.id]) - num(p.costo))}</div>` : ''}</div>`).join('')}</div>
     <div style="margin-top:14px">${usado('cli', c.id) ? '<span class="muted" style="font-size:13px">Este cliente tiene movimientos, por eso no se puede borrar.</span>' : '<button class="btn chico peligro" id="fBorrar">Borrar cliente</button>'}</div>`;
+  campoDireccion(box.querySelector('#fDir'), c.dir || '', d => { const nueva = d.replace(/^, /, '').trim(); if (nueva === c.dir) return; if (c.dirOriginal == null && c.dir) c.dirOriginal = c.dir; c.dir = nueva; guardar(); toast('Dirección guardada'); });
   box.querySelectorAll('[data-k]').forEach(i => i.onchange = () => {
     const k = i.dataset.k, v = ['codigo','limite','saldoInicial'].includes(k) ? num(i.value) : i.value.trim();
     if (k === 'codigo' && (!v || S.clientes.some(x => x !== c && num(x.codigo) === v))) { toast('Ese código ya lo tiene otro cliente'); i.value = c.codigo; return; }
