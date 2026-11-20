@@ -479,7 +479,8 @@ if (S.productos?.some(p => p.id === 'agua')) {
 }
 if (!S.lugares) agregarExtras(S);
 migrar(S);
-function guardar() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+let avisoEspacio = false;
+function guardar() { try { localStorage.setItem(KEY, JSON.stringify(S)); avisoEspacio = false; } catch (e) { if (!avisoEspacio && typeof toast === 'function') { avisoEspacio = true; toast('⚠️ No se pudo guardar: el navegador se quedó sin espacio. Lo último cargado puede perderse al cerrar.'); } } }
 guardar();
 
 const cli = id => S.clientes.find(c => c.id === id);
@@ -1111,8 +1112,8 @@ function mapeoImport(hojas, hi, archivo) {
       S.seq.venta = 0; S.seq.cobro = 0; S.noDup = []; S.dirOk = []; S.unificaciones = [];
     }
     S.ejemplo = false;
-    let sig = sigCodigo();
-    nuevos.forEach(x => S.clientes.push({id:nid(), codigo: x.codigo === '' ? sig++ : (/^\d+$/.test(x.codigo) ? Number(x.codigo) : x.codigo),
+    let sc = 0;
+    nuevos.forEach(x => S.clientes.push({id:nid(), codigo: /^\d+$/.test(x.codigo) ? Number(x.codigo) : (x.codigo === '' || /^\*+$/.test(x.codigo)) ? 'SC-' + (++sc) : x.codigo,
       nombre:x.nombre, dir:x.dir, tel:x.tel, categoria:'final', saldoInicial:x.saldo || 0, limite:0, precios:{}}));
     guardar(); cerrarModal();
     C.modo = 'lista'; C.q = ''; C.filtro = 'todos'; C.lim = 300; vistaClientes();
@@ -1124,39 +1125,51 @@ function mapeoImport(hojas, hi, archivo) {
 const STOP = new Set(['de','del','la','las','los','el','y','e','sr','sra','srta','don','dona','sa','srl','sas','flia','familia']);
 const claveNombre = n => norm(n).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(t => t && !STOP.has(t)).sort().join(' ');
 const ABREV = [[/\b(piso|dpto|depto|dto|departamento)\b.*$/, ''], [/\b(boulevard|boulevar|bulevar|bv|blvd)\b/g, 'bv'], [/\b(avenida|avda|av)\b/g, 'av'],
-  [/\b(pasaje|pje|psje)\b/g, 'pje'], [/\b(general|gral)\b/g, 'gral'], [/\b(doctor|dr)\b/g, 'dr'], [/\b(calle|numero|nro|n|no)\b/g, '']];
-function claveDir(d) {
-  let x = norm(d).replace(/[.,°º#\/\-]/g, ' ');
+  [/\b(pasaje|pje|psje)\b/g, 'pje'], [/\b(general|gral)\b/g, 'gral'], [/\b(doctor|dr)\b/g, 'dr'], [/\b(numero|nro|n|no)\b/g, '']];
+// Devuelve las claves de una dirección: "última palabra de la calle + número".
+// Entiende el formato del sistema viejo "Calle 153 AYACUCHO5756" (número pegado y a veces un 0 de más al final).
+function clavesDir(d) {
+  let x = norm(d).replace(/^(calle|avenida|pasaje|bulevar)\s+\d+(\s+\d\/\d)?\s+/, '').replace(/([a-z])(\d)/g, '$1 $2').replace(/[.,°º#\/\-()]/g, ' ');
   ABREV.forEach(([re, r]) => x = x.replace(re, r));
   x = x.replace(/\s+/g, ' ').trim();
-  return /\d/.test(x) && x.length >= 5 ? x : '';
+  const m = x.match(/([a-z]{3,})[a-z ]*?\s(\d{2,6})\b/);
+  if (!m) return [];
+  const nro = m[2], palabras = x.slice(0, m.index + m[0].length - nro.length).match(/[a-z]{3,}/g);
+  const calle = palabras[palabras.length - 1], ks = [calle + ' ' + nro];
+  if (nro.length >= 5 && nro.endsWith('0')) ks.push(calle + ' ' + nro.slice(0, -1));
+  return ks;
 }
-const claveTel = t => { const d = String(t || '').replace(/\D/g, ''); return d.length >= 7 ? d.slice(-8) : ''; };
+const claveDir = d => clavesDir(d)[0] || '';
+// Teléfono: solo dígitos, sin las características 0342/342 repetidas; si queda muy corto no sirve para comparar
+const claveTel = t => { const d = String(t || '').replace(/\D/g, '').replace(/^(0?342)+/, ''); return d.length >= 6 ? d.slice(-8) : ''; };
+const GENERICOS = new Set(['usuario','usuarios','nn','cliente','clientes','consumidor','final','varios']);
 function gruposRepetidos() {
   const cs = S.clientes, par = cs.map((_, i) => i);
-  const find = i => par[i] === i ? i : (par[i] = find(par[i]));
+  const find = i => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
   const unir = (a, b) => { a = find(a); b = find(b); if (a !== b) par[a] = b; };
-  const kN = cs.map(c => claveNombre(c.nombre)), kD = cs.map(c => claveDir(c.dir)), kT = cs.map(c => claveTel(c.tel));
+  const kN = cs.map(c => claveNombre(c.nombre)), kDs = cs.map(c => clavesDir(c.dir)), kT = cs.map(c => claveTel(c.tel));
+  const sig = cs.map((c, i) => new Set(kN[i].split(' ').filter(t => t.length >= 3 && !/^\d+$/.test(t) && !GENERICOS.has(t))));
+  const parecido = (i, j) => [...sig[i]].some(t => sig[j].has(t));
   const ign = new Set(S.noDup || []), dirOk = new Set(S.dirOk || []);
   const pk = (i, j) => [cs[i].id, cs[j].id].sort().join('|');
-  const idx = keys => { const m = new Map(); keys.forEach((k, i) => { if (k) { if (!m.has(k)) m.set(k, []); m.get(k).push(i); } }); return m; };
-  const mN = idx(kN), mD = idx(kD), mT = idx(kT), mC = idx(cs.map(c => String(c.codigo)));
+  const idx = (lists) => { const m = new Map(); lists.forEach((ks, i) => ks.forEach(k => { if (k) { if (!m.has(k)) m.set(k, []); m.get(k).push(i); } })); return m; };
+  const mD = idx(kDs), mT = idx(kT.map(k => [k])), mN = idx(kN.map(k => [k])), mC = idx(cs.map(c => /^\d+$/.test(String(c.codigo)) ? [String(c.codigo)] : []));
   const link = (arr, cond) => { for (let a = 0; a < arr.length; a++) for (let b = a + 1; b < arr.length; b++) { const i = arr[a], j = arr[b]; if (!ign.has(pk(i, j)) && (!cond || cond(i, j))) unir(i, j); } };
-  mN.forEach(a => { if (a.length > 1 && a.length < 40) link(a); });
-  mT.forEach(a => { if (a.length > 1 && a.length < 15) link(a); });
-  mC.forEach(a => { if (a.length > 1) link(a); });
-  const tok = i => kN[i].split(' ').filter(t => t.length >= 3);
-  mD.forEach(a => { if (a.length > 1 && a.length < 60) link(a, (i, j) => { const A = new Set(tok(i)); return tok(j).some(t => A.has(t)); }); });
+  mD.forEach(a => { if (a.length > 1 && a.length < 60) link(a, parecido); });          // misma dirección y nombre parecido
+  mT.forEach(a => { if (a.length > 1 && a.length < 15) link(a, parecido); });          // mismo teléfono y nombre parecido
+  mN.forEach((a, k) => { if (a.length > 1 && a.length < 8 && k.split(' ').length >= 2 && !k.split(' ').some(t => GENERICOS.has(t))) link(a); }); // mismo nombre completo
+  mC.forEach(a => { if (a.length > 1) link(a); });                                      // mismo código
   const g = new Map(); cs.forEach((c, i) => { const r = find(i); if (!g.has(r)) g.set(r, []); g.get(r).push(i); });
+  const comparte = (i, j) => kDs[i].some(k => kDs[j].includes(k)) || (kT[i] && kT[i] === kT[j]);
   const dup = [];
   g.forEach(a => {
     if (a.length < 2) return;
-    const mismoNombre = a.every(i => kN[i] === kN[a[0]]);
-    const seguro = (mismoNombre && (a.every(i => kD[i] && kD[i] === kD[a[0]]) || a.every(i => kT[i] && kT[i] === kT[a[0]]))) || a.every(i => String(cs[i].codigo) === String(cs[a[0]].codigo));
+    const seguro = (a.every(i => kN[i] === kN[a[0]]) && a.every(i => a.some(j => j !== i && comparte(i, j))))
+      || a.every(i => /^\d+$/.test(String(cs[i].codigo)) && String(cs[i].codigo) === String(cs[a[0]].codigo));
     dup.push({ids: a.map(i => cs[i].id), seguro});
   });
   const dirs = [];
-  mD.forEach((a, k) => { if (!dirOk.has(k) && new Set(a.map(find)).size > 1) dirs.push({clave:k, ids:a.map(i => cs[i].id)}); });
+  mD.forEach((a, k) => { const u = [...new Set(a)]; if (!dirOk.has(k) && u.length < 60 && new Set(u.map(find)).size > 1) dirs.push({clave:k, ids:u.map(i => cs[i].id)}); });
   dup.sort((a, b) => b.seguro - a.seguro || b.ids.length - a.ids.length);
   dirs.sort((a, b) => b.ids.length - a.ids.length);
   return {dup, dirs};
