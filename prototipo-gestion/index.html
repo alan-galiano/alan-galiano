@@ -558,7 +558,7 @@ function buscarClientes(q, lim) {
   const qq = q.trim(), toks = norm(qq).split(/\s+/).filter(Boolean);
   if (!toks.length) return [];
   const res = S.clientes.filter(c => {
-    const h = norm(c.codigo + ' ' + (c.viejos || []).join(' ') + ' ' + c.nombre + ' ' + (c.dir || '') + ' ' + (c.tel || '') + ' ' + catNombre(c.categoria));
+    const h = norm(c.codigo + ' ' + (c.viejos || []).join(' ') + ' ' + c.nombre + ' ' + (c.dir || '') + ' ' + (c.dirOriginal || '') + ' ' + (c.tel || '') + ' ' + catNombre(c.categoria));
     return toks.every(t => h.includes(t));
   });
   const exacto = c => String(c.codigo) === qq || (c.viejos || []).some(v => String(v) === qq);
@@ -1123,6 +1123,99 @@ function mapeoImport(hojas, hi, archivo) {
   };
 }
 
+
+/* ===================== Simplificar direcciones ===================== */
+// Separa una dirección en calle, número, resto (piso/depto) y localidad, limpiando el formato del sistema viejo
+function partesDir(d) {
+  let s = String(d || '').trim(), loc = '';
+  const ci = s.lastIndexOf(', ');
+  if (ci > 0 && !/\d/.test(s.slice(ci + 2))) { loc = s.slice(ci + 2).trim(); s = s.slice(0, ci); }
+  // formato de la segunda tanda del sistema viejo: "Calle 153 AYACUCHO5756", "Calle MENDEZ, JOSE RAMON6399", "jose pedroni6672"
+  const viejo = /^(calle|avenida|pasaje|bulevar)\s/i.test(s) || /[A-Za-zÁÉÍÓÚÑáéíóúñ]\d/.test(s);
+  s = s.replace(/^(calle|avenida|pasaje|bulevar)\s+\d+(\s+\d\/\d)?\s+/i, '').replace(/^calle\s+/i, '');
+  s = s.replace(/([A-Za-zÁÉÍÓÚÑáéíóúñ.])(\d)/g, '$1 $2').replace(/\s+/g, ' ').trim().toUpperCase();
+  const m = s.match(/^(.*?[A-ZÁÉÍÓÚÑ]{2,}.*?)\s(\d{1,6})(?!\S*\/)\b(.*)$/);
+  if (!m) return {calle:s, nro:'', resto:'', loc, viejo};
+  let calle = m[1].replace(/[\s,.]+$/, '');
+  const inv = calle.match(/^([A-ZÁÉÍÓÚÑ ]+),\s*([A-ZÁÉÍÓÚÑ .]+)$/);   // "MENDEZ, JOSE RAMON" -> "JOSE RAMON MENDEZ"
+  if (inv) calle = inv[2].trim() + ' ' + inv[1].trim();
+  calle = calle.replace(/\./g, ' ').replace(/\b(PASAJE|PSJE)\b/g, 'PJE').replace(/\b(AVENIDA|AVDA)\b/g, 'AV').replace(/\b(BOULEVARD|BOULEVAR|BULEVAR|BLVD)\b/g, 'BV').replace(/\s+/g, ' ').trim();
+  return {calle, nro:m[2], resto:m[3].trim(), loc, viejo};
+}
+// No se corta el nombre si lo anterior es "DE", un artículo o "PJE" (un pasaje no es la calle del mismo nombre)
+const NO_CORTAR = new Set(['de','del','la','las','los','el','pje','pasaje','callejon']);
+const palabrasCalle = c => norm(c).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
+// Calcula la versión simple de cada dirección usando cómo se escribe más seguido cada calle en la lista
+function propuestaDirecciones() {
+  const P = S.clientes.map(c => ({c, p:partesDir(c.dir)}));
+  const freq = new Map(), max = new Map();
+  P.forEach(({p}) => { if (!p.nro || p.viejo) return; const k = palabrasCalle(p.calle).join(' '); freq.set(k, (freq.get(k) || 0) + 1); max.set(k, Math.max(max.get(k) || 0, +p.nro)); });
+  const forma = new Map();   // clave normalizada -> forma escrita más usada
+  P.forEach(({p}) => { if (!p.nro || p.viejo) return; const k = palabrasCalle(p.calle).join(' '); const f = forma.get(k) || {}; f[p.calle] = (f[p.calle] || 0) + 1; forma.set(k, f); });
+  const escrita = k => { const f = forma.get(k); return f ? Object.entries(f).sort((a, b) => b[1] - a[1])[0][0] : null; };
+  const corta = calle => {
+    const w = palabrasCalle(calle); let mejor = w.join(' '), fm = freq.get(mejor) || 0;
+    for (let i = 1; i < w.length; i++) { if (NO_CORTAR.has(w[i - 1]) || /^\d+$/.test(w[i - 1])) continue; const suf = w.slice(i).join(' '); if (suf.length >= 4 && (freq.get(suf) || 0) >= 3 && (freq.get(suf) || 0) >= fm) { mejor = suf; fm = freq.get(suf); } }
+    return mejor;
+  };
+  const cambios = [], prop = [];
+  P.forEach(({c, p}) => {
+    if (!p.nro) return;
+    if (/\bKM\b|°|º|\d[.,]\d|\sY\s|\d{7,}/i.test(c.dir || '')) return;   // rutas, esquinas, decimales o con un teléfono pegado: se dejan como están
+    // solo se acortan los nombres largos del formato "Calle 88 SEBASTIAN GABOTO" (el resto se respeta, solo se ordena)
+    const k = p.viejo ? corta(p.calle) : palabrasCalle(p.calle).join(' ');
+    let nro = p.nro;
+    // 0 de más del sistema viejo: se saca si esa calle no tiene números de 5 cifras, o si el número es imposible (más de 20.000)
+    if (p.viejo && nro.length === 5 && nro.endsWith('0') && (((max.get(k) || 0) > 0 && max.get(k) < 10000) || +nro > 20000)) nro = nro.slice(0, -1);
+    const calle = p.viejo ? (escrita(k) || p.calle) : p.calle;
+    prop.push({c, calle, nro, resto:p.resto, loc:(p.loc || '').toUpperCase()});
+  });
+  // La misma dirección escrita de distintas formas (mismo número y localidad, una calle es el final de la otra: "JOSE PEDRONI" / "PEDRONI")
+  // queda escrita igual, con la forma más corta. No se une si la parte corta viene después de "DE" ("R DE ESCALADA DE SAN MARTIN").
+  const grupos = new Map();
+  prop.forEach(x => { const w = palabrasCalle(x.calle).filter(t => !CALLE_COMUN.has(t)); if (!w.length) return; const k = fon(w[w.length - 1]) + '|' + x.nro + '|' + norm(x.loc); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(x); });
+  grupos.forEach(g => {
+    if (g.length < 2) return;
+    const formas = [...new Set(g.map(x => x.calle))].sort((a, b) => a.length - b.length);
+    const usos = f => (forma.get(palabrasCalle(f).join(' ')) || {})[f] || 0;
+    g.forEach(x => {
+      const wl = palabrasCalle(x.calle);
+      // 1) misma calle con iniciales ("J R MENDEZ" = "JOSE RAMON MENDEZ"): queda la forma más usada en la lista
+      const iniciales = formas.filter(f => { const ws = palabrasCalle(f); return f !== x.calle && ws.length === wl.length &&
+        ws.every((w, i) => fon(w) === fon(wl[i]) || (w.length === 1 && wl[i].startsWith(w)) || (wl[i].length === 1 && w.startsWith(wl[i]))); });
+      const mejorIni = [x.calle, ...iniciales].sort((a, b) => usos(b) - usos(a) || a.length - b.length)[0];
+      // 2) nombre largo que termina en el corto ("SEBASTIAN GABOTO" -> "GABOTO"), salvo que lo anterior sea "DE", un artículo o un número
+      const corta = formas.find(f => { const ws = palabrasCalle(f); if (ws.length >= wl.length) return false;
+        const antes = wl[wl.length - ws.length - 1];
+        return wl.slice(wl.length - ws.length).map(fon).join(' ') === ws.map(fon).join(' ') && !NO_CORTAR.has(antes) && !/^\d+$/.test(antes); });
+      x.calle = corta || mejorIni;
+    });
+  });
+  prop.forEach(({c, calle, nro, resto, loc}) => {
+    const nueva = calle + ' ' + nro + (resto ? ' ' + resto : '') + (loc ? ', ' + loc : '');
+    if (nueva !== c.dir) cambios.push({id:c.id, antes:c.dir, despues:nueva});
+  });
+  return cambios;
+}
+function simplificarDirecciones(despues) {
+  const cambios = propuestaDirecciones();
+  if (!cambios.length) return toast('Las direcciones ya están simplificadas ✓');
+  const m = modal(`<h2>🧹 Simplificar direcciones</h2>
+    <p class="muted" style="margin-top:0">Se van a cambiar <b>${cambios.length.toLocaleString('es-AR')}</b> direcciones para que la misma calle quede escrita siempre igual y sin nombres largos. La dirección original queda guardada en cada ficha.</p>
+    <div class="scroll" style="max-height:50vh;overflow-y:auto"><table class="tabla"><thead><tr><th>Antes</th><th>Después</th></tr></thead><tbody>
+    ${cambios.slice(0, 150).map(x => `<tr><td class="muted">${esc(x.antes)}</td><td><b>${esc(x.despues)}</b></td></tr>`).join('')}</tbody></table></div>
+    ${cambios.length > 150 ? `<p class="muted" style="font-size:13px">Mostrando 150 de ${cambios.length.toLocaleString('es-AR')}.</p>` : ''}
+    <div class="fila" style="margin-top:16px"><button class="btn" id="sdNo">Cancelar</button><button class="btn prim" id="sdSi">Simplificar las ${cambios.length.toLocaleString('es-AR')}</button></div>`);
+  m.querySelector('.caja').style.maxWidth = '900px';
+  m.querySelector('#sdNo').onclick = cerrarModal;
+  m.querySelector('#sdSi').onclick = () => {
+    const f = foto();
+    cambios.forEach(x => { const c = cli(x.id); if (c.dirOriginal == null) c.dirOriginal = c.dir; c.dir = x.despues; });
+    guardar(); cerrarModal(); despues && despues();
+    toast(`Listo: ${cambios.length.toLocaleString('es-AR')} direcciones simplificadas`, () => { volverFoto(f); despues && despues(); });
+  };
+}
+
 /* ===================== Repetidos ===================== */
 const STOP = new Set(['de','del','la','las','los','el','y','e','sr','sra','srta','don','dona','sa','srl','sas','flia','familia']);
 const claveNombre = n => norm(n).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(t => t && !STOP.has(t)).sort().join(' ');
@@ -1239,11 +1332,12 @@ function vistaRepetidos() {
     </div>
     <div class="card">
       <div class="seccion-tit"><div class="chips" id="rTabs">${[['dup', `Clientes repetidos (${dup.length})`], ['dirs', `Misma dirección (${dirs.length})`], ['hechos', `Ya unificados (${unif.length})`]].map(([k, t]) => `<button class="chip ${C.tabRep === k ? 'on' : ''}" data-t="${k}">${t}</button>`).join('')}</div>
-        ${C.tabRep === 'dup' && seg.length ? `<button class="btn prim" id="rTodos">Unificar los ${seg.length} seguros</button>` : ''}
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="rDirs">🧹 Simplificar direcciones</button>${C.tabRep === 'dup' && seg.length ? `<button class="btn prim" id="rTodos">Unificar los ${seg.length} seguros</button>` : ''}</div>
         ${C.tabRep === 'hechos' && unif.length ? '<button class="btn" id="rCopiar">📋 Copiar tabla de códigos viejo → nuevo</button>' : ''}</div>
       <div id="rCuerpo" style="margin-top:14px"></div>
     </div>`;
   $('#rVolver').onclick = () => { C.modo = 'lista'; vistaClientes(); };
+  $('#rDirs').onclick = () => simplificarDirecciones(vistaRepetidos);
   $('#rTabs').querySelectorAll('[data-t]').forEach(b => b.onclick = () => { C.tabRep = b.dataset.t; C.limRep = 40; vistaRepetidos(); });
   const cuerpo = $('#rCuerpo');
   const refrescar = () => { const y = window.scrollY; vistaRepetidos(); window.scrollTo(0, y); };
@@ -1377,7 +1471,7 @@ function fDatos(c, re) {
   const box = $('#fDatos');
   box.innerHTML = `<h2>Datos del cliente</h2>
     <div class="fila"><div style="flex:0 0 100px;min-width:0"><label class="campo">Código</label><input type="number" data-k="codigo" value="${c.codigo}"></div><div><label class="campo">Nombre</label><input type="text" data-k="nombre" value="${esc(c.nombre)}"></div></div>
-    <div class="fila" style="margin-top:10px"><div><label class="campo">Dirección</label><input type="text" data-k="dir" value="${esc(c.dir || '')}"></div><div><label class="campo">Teléfono</label><input type="text" data-k="tel" value="${esc(c.tel || '')}"></div></div>
+    <div class="fila" style="margin-top:10px"><div><label class="campo">Dirección</label><input type="text" data-k="dir" value="${esc(c.dir || '')}">${c.dirOriginal && c.dirOriginal !== c.dir ? `<div class="muted" style="font-size:12px;margin-top:2px">Antes: ${esc(c.dirOriginal)}</div>` : ''}</div><div><label class="campo">Teléfono</label><input type="text" data-k="tel" value="${esc(c.tel || '')}"></div></div>
     <div class="fila" style="margin-top:10px"><div><label class="campo">Tipo de cliente</label><select data-k="categoria">${CATS.map(k => `<option value="${k.id}" ${c.categoria === k.id ? 'selected' : ''}>${k.nombre}</option>`).join('')}</select></div><div><label class="campo">Límite de crédito ($, 0 = sin límite)</label><input type="number" data-k="limite" value="${num(c.limite)}"></div></div>
     <div style="margin-top:10px"><label class="campo">Saldo anterior (lo que debía en el sistema viejo)</label><input type="number" data-k="saldoInicial" value="${num(c.saldoInicial)}"></div>
     <label class="campo" style="margin-top:14px">Precios de este cliente <span style="font-weight:500">(se actualizan solos con lo que se le cobra en cada venta)</span></label>
