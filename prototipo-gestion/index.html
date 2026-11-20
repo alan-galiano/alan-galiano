@@ -1112,8 +1112,10 @@ function mapeoImport(hojas, hi, archivo) {
       S.seq.venta = 0; S.seq.cobro = 0; S.noDup = []; S.dirOk = []; S.unificaciones = [];
     }
     S.ejemplo = false;
-    let sc = 0;
-    nuevos.forEach(x => S.clientes.push({id:nid(), codigo: /^\d+$/.test(x.codigo) ? Number(x.codigo) : (x.codigo === '' || /^\*+$/.test(x.codigo)) ? 'SC-' + (++sc) : x.codigo,
+    // los que no tienen código (vacío o "*****") reciben uno nuevo, después del más alto que exista
+    const altos = nuevos.map(x => /^\d+$/.test(x.codigo) ? Number(x.codigo) : 0);
+    let sig = Math.max(sigCodigo() - 1, ...altos) + 1;
+    nuevos.forEach(x => S.clientes.push({id:nid(), codigo: /^\d+$/.test(x.codigo) ? Number(x.codigo) : (x.codigo === '' || /^\*+$/.test(x.codigo)) ? sig++ : x.codigo, codigoNuevo: !/^\d+$/.test(x.codigo) || undefined,
       nombre:x.nombre, dir:x.dir, tel:x.tel, categoria:'final', saldoInicial:x.saldo || 0, limite:0, precios:{}}));
     guardar(); cerrarModal();
     C.modo = 'lista'; C.q = ''; C.filtro = 'todos'; C.lim = 300; vistaClientes();
@@ -1126,17 +1128,23 @@ const STOP = new Set(['de','del','la','las','los','el','y','e','sr','sra','srta'
 const claveNombre = n => norm(n).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(t => t && !STOP.has(t)).sort().join(' ');
 const ABREV = [[/\b(piso|dpto|depto|dto|departamento)\b.*$/, ''], [/\b(boulevard|boulevar|bulevar|bv|blvd)\b/g, 'bv'], [/\b(avenida|avda|av)\b/g, 'av'],
   [/\b(pasaje|pje|psje)\b/g, 'pje'], [/\b(general|gral)\b/g, 'gral'], [/\b(doctor|dr)\b/g, 'dr'], [/\b(numero|nro|n|no)\b/g, '']];
-// Devuelve las claves de una dirección: "última palabra de la calle + número".
-// Entiende el formato del sistema viejo "Calle 153 AYACUCHO5756" (número pegado y a veces un 0 de más al final).
+// Palabras de calle que no sirven para distinguir (muy comunes o títulos)
+const CALLE_COMUN = new Set(['san','santa','santo','juan','jose','maria','general','gral','doctor','dr','padre','presbitero','pasaje','pje','avenida','av','calle','del','las','los','bv','gobernador','gdor','coronel','cnel','ingeniero','ing','teniente','sin','nombre','publico','manzana','barrio']);
+// "Fonética" simple para tolerar errores de tipeo: z/s, v/b, ll/y, h muda, letras dobles
+const fon = w => w.replace(/h/g, '').replace(/z/g, 's').replace(/c([ei])/g, 's$1').replace(/v/g, 'b').replace(/ll/g, 'y').replace(/(.)\1+/g, '$1');
+// Devuelve las claves de una dirección: cada palabra de la calle + el número.
+// Entiende el formato "Calle 153 AYACUCHO5756" (número pegado y a veces un 0 de más al final)
+// y nombres escritos distinto ("J R MENDEZ 6399" = "MENDEZ, JOSE RAMON6399").
 function clavesDir(d) {
   let x = norm(d).replace(/^(calle|avenida|pasaje|bulevar)\s+\d+(\s+\d\/\d)?\s+/, '').replace(/([a-z])(\d)/g, '$1 $2').replace(/[.,°º#\/\-()]/g, ' ');
   ABREV.forEach(([re, r]) => x = x.replace(re, r));
   x = x.replace(/\s+/g, ' ').trim();
   const m = x.match(/([a-z]{3,})[a-z ]*?\s(\d{2,6})\b/);
   if (!m) return [];
-  const nro = m[2], palabras = x.slice(0, m.index + m[0].length - nro.length).match(/[a-z]{3,}/g);
-  const calle = palabras[palabras.length - 1], ks = [calle + ' ' + nro];
-  if (nro.length >= 5 && nro.endsWith('0')) ks.push(calle + ' ' + nro.slice(0, -1));
+  const nro = m[2], palabras = (x.slice(0, m.index + m[0].length - nro.length).match(/[a-z]{3,}/g) || []).filter(w => !CALLE_COMUN.has(w));
+  const nros = [nro]; if (nro.length >= 5 && nro.endsWith('0')) nros.push(nro.slice(0, -1));
+  const ks = [];
+  palabras.forEach(w => nros.forEach(n => ks.push(fon(w) + ' ' + n)));
   return ks;
 }
 const claveDir = d => clavesDir(d)[0] || '';
@@ -1157,7 +1165,17 @@ function gruposRepetidos() {
   const link = (arr, cond) => { for (let a = 0; a < arr.length; a++) for (let b = a + 1; b < arr.length; b++) { const i = arr[a], j = arr[b]; if (!ign.has(pk(i, j)) && (!cond || cond(i, j))) unir(i, j); } };
   mD.forEach(a => { if (a.length > 1 && a.length < 60) link(a, parecido); });          // misma dirección y nombre parecido
   mT.forEach(a => { if (a.length > 1 && a.length < 15) link(a, parecido); });          // mismo teléfono y nombre parecido
-  mN.forEach((a, k) => { if (a.length > 1 && a.length < 8 && k.split(' ').length >= 2 && !k.split(' ').some(t => GENERICOS.has(t))) link(a); }); // mismo nombre completo
+  // mismo nombre completo, pero solo si las direcciones no se contradicen (así no se juntan escuelas o centros de distintos barrios)
+  const nrosDe = i => [...new Set(kDs[i].map(k => k.split(' ')[1]))];
+  // compatibles: los dos sin dirección, o la misma dirección / mismo número (aunque la calle esté escrita distinto o falte)
+  const compatibles = (i, j) => {
+    const di = kDs[i].length, dj = kDs[j].length;
+    if (!di && !dj) return true;
+    if (!di || !dj) return false;   // uno sin dirección: no se puede saber, no se une solo por el nombre
+    if (kDs[i].some(k => kDs[j].includes(k))) return true;
+    return nrosDe(i).some(a => nrosDe(j).some(b => a === b || (Math.abs(a.length - b.length) === 1 && (a.startsWith(b) || b.startsWith(a)))));
+  };
+  mN.forEach((a, k) => { if (a.length > 1 && a.length < 12 && k.split(' ').length >= 2 && !k.split(' ').some(t => GENERICOS.has(t))) link(a, compatibles); });
   mC.forEach(a => { if (a.length > 1) link(a); });                                      // mismo código
   const g = new Map(); cs.forEach((c, i) => { const r = find(i); if (!g.has(r)) g.set(r, []); g.get(r).push(i); });
   const comparte = (i, j) => kDs[i].some(k => kDs[j].includes(k)) || (kT[i] && kT[i] === kT[j]);
@@ -1169,7 +1187,12 @@ function gruposRepetidos() {
     dup.push({ids: a.map(i => cs[i].id), seguro});
   });
   const dirs = [];
-  mD.forEach((a, k) => { const u = [...new Set(a)]; if (!dirOk.has(k) && u.length < 60 && new Set(u.map(find)).size > 1) dirs.push({clave:k, ids:u.map(i => cs[i].id)}); });
+  const vistos = new Set();
+  mD.forEach((a, k) => {
+    const u = [...new Set(a)].sort((x, y) => x - y), firma = u.join(',');
+    if (dirOk.has(k) || vistos.has(firma) || u.length >= 60 || new Set(u.map(find)).size < 2) return;
+    vistos.add(firma); dirs.push({clave:k, ids:u.map(i => cs[i].id)});
+  });
   dup.sort((a, b) => b.seguro - a.seguro || b.ids.length - a.ids.length);
   dirs.sort((a, b) => b.ids.length - a.ids.length);
   return {dup, dirs};
@@ -1259,7 +1282,7 @@ function vistaRepetidos() {
     el.querySelector('[data-no]').onclick = () => {
       const f = foto();
       if (C.tabRep === 'dup') { for (let a = 0; a < g.ids.length; a++) for (let b = a + 1; b < g.ids.length; b++) (S.noDup ||= []).push([g.ids[a], g.ids[b]].sort().join('|')); }
-      else (S.dirOk ||= []).push(g.clave);
+      else (S.dirOk ||= []).push(...new Set(g.ids.flatMap(id => clavesDir(cli(id).dir))));
       guardar(); refrescar();
       toast('Listo, no se va a volver a mostrar', () => { volverFoto(f); refrescar(); });
     };
