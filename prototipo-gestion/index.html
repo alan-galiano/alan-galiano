@@ -1033,7 +1033,7 @@ function vLista() {
 }
 
 /* ===================== CLIENTES ===================== */
-const C = { q: '', filtro: 'todos', sel: null, abrir: false, modo: 'lista', lim: 300 };
+const C = { q: '', filtro: 'todos', sel: null, abrir: false, modo: 'lista', lim: 300, orden: 'codigo' };
 function abrirFicha(id) { C.sel = id; C.modo = 'lista'; C.abrir = true; if (location.hash === '#clientes') { C.abrir = false; vistaClientes(); window.scrollTo(0, 0); } else location.hash = '#clientes'; }
 function mapaSaldos() {
   const m = new Map(S.clientes.map(c => [c.id, num(c.saldoInicial)]));
@@ -1061,25 +1061,37 @@ function vistaClientes() {
       <div class="fila" style="align-items:center"><div style="flex:3;min-width:220px"><input type="search" id="cQ" placeholder="🔎 Código, nombre, dirección, número o teléfono…" value="${esc(C.q)}" autocomplete="off"></div>
         <div style="flex:0 0 auto;display:flex;gap:8px;flex-wrap:wrap"><button class="btn prim" id="cNuevo">+ Cliente nuevo</button><button class="btn" id="cImp">📥 Importar listado</button><button class="btn" id="cRep">🔍 Revisar repetidos${nRep ? ' (' + nRep + ')' : ''}</button></div></div>
       <div class="chips" style="margin-top:12px" id="cFil">${[['todos','Todos'],['deuda','Los que deben'],['comercio','Comercios'],['gastro','Gastronómicos'],['subdist','Subdistribuidores'],['final','Usuarios']].map(([k, t]) => `<button class="chip ${C.filtro === k ? 'on' : ''}" data-f="${k}">${t}</button>`).join('')}</div>
+      <div class="fila" style="margin-top:12px;align-items:center"><div style="flex:0 0 auto;min-width:0"><label class="campo" style="margin:0">Ordenar por</label></div>
+        <div style="flex:0 0 auto"><select id="cOrden" style="width:auto">${[['codigo','Código'],['nombre','Nombre (A → Z)'],['nombreZ','Nombre (Z → A)'],['dir','Dirección (A → Z)'],['saldo','Lo que deben (mayor primero)']].map(([k, t]) => `<option value="${k}" ${C.orden === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div></div>
       <div id="cLista" style="margin-top:14px"></div>
     </div>`;
   const q = $('#cQ');
   q.oninput = () => { C.q = q.value; C.lim = 300; cLista(sal); };
   q.onkeydown = e => { if (e.key === 'Enter') { const f = $('#cLista tr[data-c]'); if (f) abrirFicha(f.dataset.c); } };
   $('#cFil').querySelectorAll('[data-f]').forEach(b => b.onclick = () => { C.filtro = b.dataset.f; C.lim = 300; vistaClientes(); });
+  $('#cOrden').onchange = e => { C.orden = e.target.value; C.lim = 300; cLista(sal); };
   $('#cNuevo').onclick = () => nuevoCliente(C.q, c => abrirFicha(c.id));
   $('#cImp').onclick = elegirArchivo;
   $('#cRep').onclick = $('#kRep').onclick = e => { e.preventDefault(); C.modo = 'dups'; vistaClientes(); window.scrollTo(0, 0); };
   cLista(sal); q.focus();
 }
+const COLLATOR = new Intl.Collator('es', {sensitivity:'base', numeric:true});
 function cLista(sal) {
   sal ||= mapaSaldos();
   const ult = new Map(); S.cobros.forEach(x => { if (!x.anulado && (!ult.get(x.cliente) || ult.get(x.cliente) < x.fecha)) ult.set(x.cliente, x.fecha); });
   const nrec = new Map(); S.recordatorios.forEach(r => { if (!r.hecho && r.cliente) nrec.set(r.cliente, (nrec.get(r.cliente) || 0) + 1); });
   let lista = C.q.trim() ? buscarClientes(C.q) : S.clientes.slice();
-  if (C.filtro === 'deuda') lista = lista.filter(c => sal.get(c.id) > 0).sort((a, b) => sal.get(b.id) - sal.get(a.id));
+  if (C.filtro === 'deuda') lista = lista.filter(c => sal.get(c.id) > 0);
   else if (C.filtro !== 'todos') lista = lista.filter(c => c.categoria === C.filtro);
-  if (!C.q.trim() && C.filtro !== 'deuda') lista.sort((a, b) => (num(a.codigo) || 1e12) - (num(b.codigo) || 1e12) || String(a.codigo).localeCompare(String(b.codigo)));
+  const alfa = COLLATOR.compare;
+  const porCodigo = (a, b) => (num(a.codigo) || 1e12) - (num(b.codigo) || 1e12) || String(a.codigo).localeCompare(String(b.codigo));
+  const orden = C.filtro === 'deuda' && C.orden === 'codigo' ? 'saldo' : C.orden;
+  // con búsqueda escrita y orden por código, se respeta el orden de relevancia (código exacto primero)
+  if (!(C.q.trim() && orden === 'codigo')) lista.sort(
+    orden === 'nombre' ? (a, b) => alfa(a.nombre, b.nombre) || porCodigo(a, b) :
+    orden === 'nombreZ' ? (a, b) => alfa(b.nombre, a.nombre) || porCodigo(a, b) :
+    orden === 'dir' ? (a, b) => alfa(a.dir || '\uffff', b.dir || '\uffff') || alfa(a.nombre, b.nombre) :
+    orden === 'saldo' ? (a, b) => (sal.get(b.id) || 0) - (sal.get(a.id) || 0) || alfa(a.nombre, b.nombre) : porCodigo);
   const total = lista.length, lim = C.lim || 300;
   $('#cLista').innerHTML = !total ? '<div class="vacio">No se encontró ningún cliente.</div>' :
     `<p class="muted" style="margin:0 0 8px;font-size:14px"><b>${total.toLocaleString('es-AR')}</b> cliente${total === 1 ? '' : 's'}${C.q.trim() || C.filtro !== 'todos' ? ' encontrados' : ''}</p>
