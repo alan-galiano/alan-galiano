@@ -1440,7 +1440,7 @@ function unificar(keepId, ids, final) {
     k.saldoInicial = num(k.saldoInicial) + num(o.saldoInicial);
     if (!k.dir) k.dir = o.dir;
     if (!k.tel) k.tel = o.tel; else if (o.tel && claveTel(o.tel) !== claveTel(k.tel) && !k.tel.includes(o.tel)) k.tel += ' / ' + o.tel;
-    k.viejos = [...new Set([...(k.viejos || []), ...(String(o.codigo) !== String(k.codigo) ? [o.codigo] : []), ...(o.viejos || [])])];
+    k.viejos = [...new Set([...(k.viejos || []), ...(String(o.codigo) !== String(k.codigo) ? [o.codigo] : []), ...(o.viejos || [])].map(String))].filter(v => v !== String(k.codigo));
   });
   S.clientes = S.clientes.filter(c => !set.has(c.id));
   (S.unificaciones ||= []).push({fecha:hoy(), queda:{codigo:k.codigo, nombre:k.nombre}, eliminados:otros.map(o => ({codigo:o.codigo, nombre:o.nombre, dir:o.dir}))});
