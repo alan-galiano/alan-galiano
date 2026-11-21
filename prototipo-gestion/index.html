@@ -166,6 +166,11 @@ tr.click:hover td{background:#fffbd1}
 .veh-datos span{display:block;font-size:12px;color:var(--suave);font-weight:600}
 .veh-datos b{display:block;font-size:20px;margin-top:2px;font-variant-numeric:tabular-nums}
 .veh-datos small{display:block;font-size:12px;color:var(--suave);margin-top:2px}
+.grupo-dup tr.fila-queda td{background:#fff6b0}
+.grupo-dup tr.fila-fuera td{opacity:.5}
+.tag-queda{background:var(--negro);color:var(--amarillo);font-size:11px;font-weight:800;padding:2px 7px;border-radius:6px;white-space:nowrap}
+.tag-une{background:#eee;color:#555;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;white-space:nowrap}
+.tag-fuera{color:#999;font-size:11px;white-space:nowrap}
 .asi-queda{background:#fafaf6;border:1px dashed var(--borde);border-radius:10px;padding:10px 12px;margin-top:10px}
 .grupo-dup{border:1.5px solid var(--borde);border-radius:12px;padding:12px;margin-bottom:12px}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -1474,7 +1479,7 @@ function vistaRepetidos() {
     return `<div class="grupo-dup" data-g="${gi}">
       <div class="seccion-tit" style="margin-bottom:6px">${etiqueta}<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn chico" data-no>${C.tabRep === 'dup' ? 'No son el mismo' : 'Están bien así'}</button><button class="btn chico prim" data-unir>Unificar marcados</button></div></div>
       <div class="scroll"><table class="tabla"><thead><tr><th title="Repetido">Incl.</th><th>Queda</th><th>Código</th><th>Nombre</th><th>Dirección</th><th class="ocultar-movil">Teléfono</th><th class="num">Ventas</th><th class="num">Saldo</th></tr></thead><tbody>
-      ${g.ids.map(id => { const c = cli(id); return `<tr><td><input type="checkbox" data-inc="${id}" ${C.tabRep === 'dup' ? 'checked' : (id === keep ? 'checked' : '')} style="width:20px;height:20px"></td><td><input type="radio" name="k${gi}" value="${id}" ${id === keep ? 'checked' : ''} style="width:20px;height:20px"></td>
+      ${g.ids.map(id => { const c = cli(id); return `<tr data-fila="${id}"><td><input type="checkbox" data-inc="${id}" ${C.tabRep === 'dup' ? 'checked' : (id === keep ? 'checked' : '')} style="width:20px;height:20px"></td><td><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="k${gi}" value="${id}" ${id === keep ? 'checked' : ''} style="width:20px;height:20px"><span class="estado-fila"></span></label></td>
         <td><span class="cod">${esc(c.codigo)}</span></td><td><b>${esc(c.nombre)}</b></td><td>${esc(c.dir || '')}</td><td class="ocultar-movil">${esc(c.tel || '')}</td><td class="num">${nv.get(id) || 0}</td><td class="num">${money(sal.get(id) || 0)}</td></tr>`; }).join('')}
       </tbody></table></div>
       <div class="asi-queda">
@@ -1490,6 +1495,18 @@ function vistaRepetidos() {
   cuerpo.querySelectorAll('.grupo-dup').forEach(el => {
     const g = grupos[Number(el.dataset.g)];
     const inNombre = el.querySelector('[data-final="nombre"]'), selDir = el.querySelector('[data-final="dir"]');
+    // marca bien cuál queda (amarillo, "✓ QUEDA"), cuáles se unen y cuáles no se tocan
+    const pintarFilas = () => {
+      const keep = el.querySelector('input[type=radio]:checked')?.value;
+      el.querySelectorAll('tr[data-fila]').forEach(tr => {
+        const id = tr.dataset.fila, inc = tr.querySelector('[data-inc]').checked;
+        tr.classList.toggle('fila-queda', id === keep);
+        tr.classList.toggle('fila-fuera', id !== keep && !inc);
+        tr.querySelector('.estado-fila').innerHTML = id === keep ? '<span class="tag-queda">✓ QUEDA</span>' : inc ? '<span class="tag-une">se une</span>' : '<span class="tag-fuera">no se toca</span>';
+      });
+    };
+    el.querySelectorAll('[data-inc]').forEach(cb => cb.addEventListener('change', pintarFilas));
+    pintarFilas();
     let nombreTocado = false;
     inNombre.oninput = () => { nombreTocado = true; };
     el.querySelectorAll('[data-usar-nombre]').forEach(b => b.onclick = () => { inNombre.value = b.dataset.usarNombre; nombreTocado = true; });
@@ -1498,6 +1515,7 @@ function vistaRepetidos() {
       const c = cli(r.value);
       if (!nombreTocado) inNombre.value = c.nombre;   // si no lo cambiaste a mano, sigue al que queda
       if (c.dir) selDir.value = c.dir;
+      pintarFilas();
     });
     el.querySelector('[data-unir]').onclick = () => {
       const keep = el.querySelector('input[type=radio]:checked').value;
