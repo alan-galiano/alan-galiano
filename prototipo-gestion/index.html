@@ -1446,6 +1446,26 @@ function unificar(keepId, ids, final) {
   (S.unificaciones ||= []).push({fecha:hoy(), queda:{codigo:k.codigo, nombre:k.nombre}, eliminados:otros.map(o => ({codigo:o.codigo, nombre:o.nombre, dir:o.dir}))});
   return otros.length;
 }
+// Junta en un texto corto los cambios hechos en esta compu (unificaciones, "no son el mismo", ediciones) para pasárselos a Claude
+function exportarCambios() {
+  const cod = id => cli(id)?.codigo;
+  const base = typeof CLIENTES_REALES !== 'undefined' ? new Map(CLIENTES_REALES.map(r => [String(r[0]), r])) : null;
+  const edit = [];
+  if (base) S.clientes.forEach(c => { const r = base.get(String(c.codigo)); if (!r) return;
+    const e = {c:c.codigo}; if (c.nombre !== r[1]) e.n = c.nombre; if ((c.dir || '') !== (r[2] || '')) e.d = c.dir; if ((c.tel || '') !== (r[3] || '')) e.t = c.tel;
+    if (Object.keys(e).length > 1) edit.push(e); });
+  const datos = {v:1, unif:(S.unificaciones || []).map(u => ({q:u.queda.codigo, e:u.eliminados.map(x => x.codigo)})),
+    no:(S.noDup || []).map(k => k.split('|').map(cod)).filter(p => p[0] != null && p[1] != null),
+    dirOk:S.dirOk || [], edit};
+  const txt = 'CAMBIOS-CLIENTES ' + JSON.stringify(datos);
+  const m = modal(`<h2>💾 Pasarle mis cambios a Claude</h2>
+    <p class="muted" style="margin-top:0">${datos.unif.length} unificaciones, ${datos.no.length} pares marcados como distintos y ${edit.length} fichas editadas. Copiá este texto y pegalo en el chat con Claude.</p>
+    <textarea readonly style="height:160px">${esc(txt)}</textarea>
+    <div class="fila" style="margin-top:14px"><button class="btn" id="exNo">Cerrar</button><button class="btn prim" id="exCopiar">📋 Copiar</button></div>`);
+  const ta = m.querySelector('textarea'); ta.focus(); ta.select();
+  m.querySelector('#exNo').onclick = cerrarModal;
+  m.querySelector('#exCopiar').onclick = () => { try { navigator.clipboard.writeText(txt).then(() => toast('Copiado. Pegalo en el chat con Claude'), () => { ta.select(); toast('Seleccionado: apretá Ctrl+C para copiar'); }); } catch (e) { ta.select(); toast('Seleccionado: apretá Ctrl+C para copiar'); } };
+}
 function vistaRepetidos() {
   const {dup, dirs} = gruposRepetidos(), seg = dup.filter(g => g.seguro);
   const nv = new Map(); S.ventas.forEach(v => { if (!v.anulada) nv.set(v.cliente, (nv.get(v.cliente) || 0) + 1); });
@@ -1465,12 +1485,13 @@ function vistaRepetidos() {
     </div>
     <div class="card">
       <div class="seccion-tit"><div class="chips" id="rTabs">${[['dup', `Clientes repetidos (${dup.length})`], ['dirs', `Misma dirección (${dirs.length})`], ['hechos', `Ya unificados (${unif.length})`]].map(([k, t]) => `<button class="chip ${C.tabRep === k ? 'on' : ''}" data-t="${k}">${t}</button>`).join('')}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="rDirs">🧹 Simplificar direcciones</button>${C.tabRep === 'dup' && seg.length ? `<button class="btn prim" id="rTodos">Unificar los ${seg.length} seguros</button>` : ''}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="rExport">💾 Pasarle mis cambios a Claude</button><button class="btn" id="rDirs">🧹 Simplificar direcciones</button>${C.tabRep === 'dup' && seg.length ? `<button class="btn prim" id="rTodos">Unificar los ${seg.length} seguros</button>` : ''}</div>
         ${C.tabRep === 'hechos' && unif.length ? '<button class="btn" id="rCopiar">📋 Copiar tabla de códigos viejo → nuevo</button>' : ''}</div>
       <div id="rCuerpo" style="margin-top:14px"></div>
     </div>`;
   $('#rVolver').onclick = () => { C.modo = 'lista'; vistaClientes(); };
   $('#rDirs').onclick = () => simplificarDirecciones(vistaRepetidos);
+  $('#rExport').onclick = exportarCambios;
   $('#rTabs').querySelectorAll('[data-t]').forEach(b => b.onclick = () => { C.tabRep = b.dataset.t; C.limRep = 40; vistaRepetidos(); });
   const cuerpo = $('#rCuerpo');
   const refrescar = () => { const y = window.scrollY; vistaRepetidos(); window.scrollTo(0, y); };
