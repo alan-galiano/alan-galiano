@@ -1137,6 +1137,8 @@ const CAMPOS_IMP = [
   ['loc', 'Localidad', /local|ciudad|barrio/],
   ['tel', 'Teléfono', /tel|cel|whats|m[oó]vil/],
   ['saldo', 'Saldo / deuda', /saldo|deuda|debe/],
+  ['viejos', 'Códigos anteriores', /codigos? anteriores|unificad/],
+  ['dirOrig', 'Dirección original', /direccion original|domicilio original/],
 ];
 function detectarCabecera(rows) {
   for (let r = 0; r < Math.min(15, rows.length); r++) {
@@ -1156,7 +1158,8 @@ function filaImport(r, map) {
   let dir = g('dir'); const n = g('num'), loc = g('loc');
   if (n && !dir.includes(n)) dir = (dir + ' ' + n).trim();
   if (loc) dir = dir ? dir + ', ' + loc : loc;
-  return {codigo: g('codigo').replace(/\.0+$/, ''), nombre: g('nombre').replace(/\s+/g, ' '), dir: dir.replace(/\s+/g, ' '), tel: g('tel'), saldo: parseMonto(g('saldo'))};
+  return {codigo: g('codigo').replace(/\.0+$/, ''), nombre: g('nombre').replace(/\s+/g, ' '), dir: dir.replace(/\s+/g, ' '), tel: g('tel'), saldo: parseMonto(g('saldo')),
+    viejos: g('viejos').split(/[,;\s]+/).filter(Boolean), dirOrig: g('dirOrig')};
 }
 function mapeoImport(hojas, hi, archivo) {
   const rows = hojas[hi].rows, hr = detectarCabecera(rows);
@@ -1201,7 +1204,7 @@ function mapeoImport(hojas, hi, archivo) {
     const altos = nuevos.map(x => /^\d+$/.test(x.codigo) ? Number(x.codigo) : 0);
     let sig = Math.max(sigCodigo() - 1, ...altos) + 1;
     nuevos.forEach(x => S.clientes.push({id:nid(), codigo: /^\d+$/.test(x.codigo) ? Number(x.codigo) : (x.codigo === '' || /^\*+$/.test(x.codigo)) ? sig++ : x.codigo, codigoNuevo: !/^\d+$/.test(x.codigo) || undefined,
-      nombre:x.nombre, dir:x.dir, tel:x.tel, categoria:'final', saldoInicial:x.saldo || 0, limite:0, precios:{}}));
+      nombre:x.nombre, dir:x.dir, tel:x.tel, categoria:'final', ...(x.viejos.length ? {viejos:x.viejos} : {}), ...(x.dirOrig && x.dirOrig !== x.dir ? {dirOriginal:x.dirOrig} : {}), saldoInicial:x.saldo || 0, limite:0, precios:{}}));
     guardar(); cerrarModal();
     C.modo = 'lista'; C.q = ''; C.filtro = 'todos'; C.lim = 300; vistaClientes();
     toast('Se cargaron ' + nuevos.length.toLocaleString('es-AR') + ' clientes. Encontré ' + gruposRepetidos().dup.length + ' grupos de posibles repetidos.');
