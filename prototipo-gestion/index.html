@@ -651,7 +651,21 @@ function buscarCalles(texto, loc, max = 8) {
     const n = fon(norm(o.nombre).replace(/[^a-z0-9 ]/g, ' '));
     res.push({o, rank: n.startsWith(toks.join(' ')) ? 0 : ws.some(w => w.startsWith(toks[0])) ? 1 : 2});
   });
+  // calles nuevas agregadas por ustedes (barrios nuevos que todavía no están en los mapas)
+  callesPropias(loc).forEach(nombre => {
+    const ws = palabrasCalle(nombre).map(fy);
+    if (toks.every(t => ws.some(w => w.startsWith(t)))) res.push({o:{nombre, propia:true}, rank: ws[0].startsWith(toks[0]) ? 0 : 1});
+  });
   return res.sort((a, b) => a.rank - b.rank || a.o.nombre.localeCompare(b.o.nombre)).slice(0, max).map(x => x.o);
+}
+const claveLoc = loc => norm(loc || 'santa fe').trim();
+function callesPropias(loc) { return ((S.callesPropias || {})[claveLoc(loc)] || []); }
+function agregarCallePropia(nombre, loc) {
+  S.callesPropias ||= {};
+  const k = claveLoc(loc), l = S.callesPropias[k] ||= [];
+  const n = nombre.trim().toUpperCase().replace(/\s+/g, ' ');
+  if (!n || l.some(x => norm(x) === norm(n))) return false;
+  l.push(n); l.sort(); guardar(); return true;
 }
 // Arma el campo de dirección (calle con sugerencias + número + piso/depto + localidad) dentro de "box".
 // onCambio(direccionCompleta) se llama cada vez que cambia algo.
@@ -672,9 +686,11 @@ function campoDireccion(box, valor, onCambio) {
   const nota = () => {
     const calle = $d('calle').value.trim(), loc = locActual(), L = indiceOficial()[LOC_OFICIAL[norm(loc).trim()] || ''];
     if (!calle) return $d('nota').innerHTML = '';
-    if (!L) return $d('nota').innerHTML = 'Localidad sin listado oficial: se guarda como está escrita.';
-    const ok = L.some(o => norm(o.nombre) === norm(calle));
-    $d('nota').innerHTML = ok ? '<span style="color:var(--verde)">✓ Calle oficial</span>' : '<span style="color:#9a5b00">⚠️ No está en el listado oficial de calles de ' + esc(LOC_OFICIAL[norm(loc).trim()]) + '. Elegila de la lista si podés.</span>';
+    if (callesPropias(loc).some(x => norm(x) === norm(calle))) return $d('nota').innerHTML = '<span style="color:var(--verde)">✓ Calle agregada por ustedes</span>';
+    if (L && L.some(o => norm(o.nombre) === norm(calle))) return $d('nota').innerHTML = '<span style="color:var(--verde)">✓ Calle oficial</span>';
+    const donde = L ? esc(LOC_OFICIAL[norm(loc).trim()]) : esc(loc || 'esta localidad');
+    $d('nota').innerHTML = `<span style="color:#9a5b00">⚠️ No está en la lista de calles de ${donde}. Se puede guardar igual. Si es una calle nueva (barrio nuevo), agregala:</span> <button type="button" class="btn chico" data-d="agregar">➕ Agregar “${esc(calle.toUpperCase())}” a la lista</button>`;
+    $d('agregar').onclick = () => { if (agregarCallePropia(calle, loc)) toast('Calle agregada: va a aparecer en las sugerencias'); nota(); };
   };
   let sel = 0, lista = [];
   const pintar = () => {
@@ -682,7 +698,7 @@ function campoDireccion(box, valor, onCambio) {
     lista = /\d/.test(t) ? [] : buscarCalles(t, locActual());
     if (lista.length === 1 && norm(lista[0].nombre) === norm(t)) lista = [];
     if (sel >= lista.length) sel = 0;
-    $d('sug').innerHTML = lista.length ? '<div class="sugerencias">' + lista.map((o, i) => `<div class="sug ${i === sel ? 'sel' : ''}" data-i="${i}"><b>${esc(o.nombre)}</b></div>`).join('') + '</div>' : '';
+    $d('sug').innerHTML = lista.length ? '<div class="sugerencias">' + lista.map((o, i) => `<div class="sug ${i === sel ? 'sel' : ''}" data-i="${i}"><b>${esc(o.nombre)}</b>${o.propia ? ' <span class="tag" style="font-size:11px">agregada por ustedes</span>' : ''}</div>`).join('') + '</div>' : '';
     $d('sug').querySelectorAll('.sug').forEach(el => { el.onmousedown = e => { e.preventDefault(); elegir(+el.dataset.i); }; });
   };
   const cambio = () => { nota(); onCambio && onCambio(armar()); };
@@ -1859,6 +1875,7 @@ function vistaDatos() {
         <div class="card" id="dProd"></div>
         <div class="card" id="dVeh"></div>
         <div class="card" id="dLug"></div>
+        <div class="card" id="dCalles"></div>
       </div>
       <div class="card" id="dEmp"></div>
     </div>
@@ -1867,7 +1884,7 @@ function vistaDatos() {
       <p class="muted" style="margin-top:0">Este prototipo viene con datos inventados para probarlo. Cuando quieras, podés borrar todo y empezar de cero.</p>
       <div class="fila"><button class="btn peligro" id="dVaciar">Borrar todo y empezar de cero</button><button class="btn" id="dEjemplo">Volver a cargar los datos de ejemplo</button></div>
     </div>`;
-  dPrecios(); dProd(); dEmp(); dVeh(); dLug();
+  dPrecios(); dProd(); dEmp(); dVeh(); dLug(); dCalles();
   $('#dVaciar').onclick = () => confirmar('¿Borrar todas las ventas, gastos, horas, clientes, compras, pagos y conteos?', 'Sí, borrar todo', () => {
     S = {...S, ejemplo:false, noDup:[], dirOk:[], unificaciones:[], clientes:[], ventas:[], cobros:[], recordatorios:[], seq:{venta:0, cobro:0}, gastos:[], horas:[], compras:[], pagos:[], stock:{}, prestamos:[], proveedor:{...S.proveedor, saldoInicial:0}};
     guardar(); vistaDatos(); toast('Listo, quedó vacío');
@@ -1919,6 +1936,13 @@ function dPrecios() {
 function dProd() { editable($('#dProd'), S.productos, 'prod', [{k:'nombre', t:'Producto'}, {k:'envase', t:'Lleva envase', tipo:'check'}], 'Productos', () => ({id:nid(), nombre:'Producto nuevo', precio:0, costo:0, envase:false})); }
 function dEmp() { editable($('#dEmp'), S.empleados, 'emp', [{k:'nombre', t:'Empleado'}, {k:'valorHora', t:'Valor hora $', tipo:'number'}, {k:'chofer', t:'Chofer', tipo:'check'}], 'Empleados', () => ({id:nid(), nombre:'Empleado nuevo', valorHora:0, chofer:false})); }
 function dLug() { editable($('#dLug'), S.lugares, 'lug', [{k:'nombre', t:'Lugar'}], 'Lugares del conteo de envases', () => ({id:nid(), nombre:'Lugar nuevo'})); }
+function dCalles() {
+  const box = $('#dCalles'), P = S.callesPropias || {};
+  const filas = Object.entries(P).flatMap(([k, l]) => l.map(n => [k, n]));
+  box.innerHTML = `<h2>Calles agregadas</h2><p class="muted" style="margin-top:0;font-size:14px">Calles nuevas que no están en la lista oficial (barrios nuevos). Aparecen en las sugerencias al cargar direcciones.</p>` +
+    (filas.length ? `<table class="tabla"><tbody>${filas.map(([k, n], i) => `<tr><td><b>${esc(n)}</b><div class="muted" style="font-size:12px">${esc((LOCALIDADES.find(([v]) => norm(v) === k) || [0, k])[1])}</div></td><td style="width:40px"><button class="x" data-i="${i}" title="Quitar">✕</button></td></tr>`).join('')}</tbody></table>` : '<div class="vacio">Todavía no agregaron calles.</div>');
+  box.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { const [k, n] = filas[+b.dataset.i]; P[k] = P[k].filter(x => x !== n); guardar(); dCalles(); toast('Calle quitada de la lista'); });
+}
 function dVeh() { editable($('#dVeh'), S.vehiculos, 'veh', [{k:'nombre', t:'Vehículo'}], 'Vehículos', () => ({id:nid(), nombre:'Vehículo nuevo'})); }
 
 /* ===================== PROVEEDOR ===================== */
