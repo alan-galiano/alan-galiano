@@ -1221,11 +1221,19 @@ function mapeoImport(hojas, hi, archivo) {
     // los que no tienen código (vacío o "*****") reciben uno nuevo, después del más alto que exista
     const altos = nuevos.map(x => /^\d+$/.test(x.codigo) ? Number(x.codigo) : 0);
     let sig = Math.max(sigCodigo() - 1, ...altos) + 1;
-    nuevos.forEach(x => S.clientes.push({id:nid(), codigo: /^\d+$/.test(x.codigo) ? Number(x.codigo) : (x.codigo === '' || /^\*+$/.test(x.codigo)) ? sig++ : x.codigo, codigoNuevo: !/^\d+$/.test(x.codigo) || undefined,
+    // códigos repetidos (dos clientes distintos con el mismo código en el sistema viejo): el primero lo conserva, los demás reciben uno nuevo
+    const usados = new Set(S.clientes.map(c => String(c.codigo)));
+    let repetidos = 0;
+    nuevos.forEach(x => { if (/^\d+$/.test(x.codigo) && usados.has(x.codigo)) { x.viejos = [...new Set([x.codigo, ...x.viejos])]; x.codigo = ''; x.codRepetido = true; repetidos++; } else if (x.codigo) usados.add(x.codigo); });
+    // primero reciben código los "*****" (así sus códigos nuevos no cambian) y después los que tenían un código repetido o vacío
+    const codNuevo = new Map();
+    nuevos.forEach(x => { if (/^\*+$/.test(x.codigo)) codNuevo.set(x, sig++); });
+    nuevos.forEach(x => { if (x.codigo === '') codNuevo.set(x, sig++); });
+    nuevos.forEach(x => S.clientes.push({id:nid(), codigo: /^\d+$/.test(x.codigo) ? Number(x.codigo) : codNuevo.has(x) ? codNuevo.get(x) : x.codigo, codigoNuevo: !/^\d+$/.test(x.codigo) || undefined, ...(x.codRepetido ? {codigoRepetido:true} : {}),
       nombre:x.nombre, dir:x.dir, tel:x.tel, categoria:'final', ...(x.viejos.length ? {viejos:x.viejos} : {}), ...(x.dirOrig && x.dirOrig !== x.dir ? {dirOriginal:x.dirOrig} : {}), saldoInicial:x.saldo || 0, limite:0, precios:{}}));
     guardar(); cerrarModal();
     C.modo = 'lista'; C.q = ''; C.filtro = 'todos'; C.lim = 300; vistaClientes();
-    toast('Se cargaron ' + nuevos.length.toLocaleString('es-AR') + ' clientes. Encontré ' + gruposRepetidos().dup.length + ' grupos de posibles repetidos.');
+    toast('Se cargaron ' + nuevos.length.toLocaleString('es-AR') + ' clientes. Encontré ' + gruposRepetidos().dup.length + ' grupos de posibles repetidos.' + (repetidos ? ' ' + repetidos + ' tenían un código que ya usaba otro cliente: recibieron un código nuevo.' : ''));
   };
 }
 
@@ -1391,14 +1399,14 @@ function gruposRepetidos() {
     return nrosDe(i).some(a => nrosDe(j).some(b => a === b || (Math.abs(a.length - b.length) === 1 && (a.startsWith(b) || b.startsWith(a)))));
   };
   mN.forEach((a, k) => { if (a.length > 1 && a.length < 12 && k.split(' ').length >= 2 && !k.split(' ').some(t => GENERICOS.has(t))) link(a, compatibles); });
-  mC.forEach(a => { if (a.length > 1) link(a); });                                      // mismo código
+  // mismo código: el sistema viejo tiene códigos repetidos entre clientes distintos, así que solo cuenta si además el nombre se parece
+  mC.forEach(a => { if (a.length > 1) link(a, parecido); });
   const g = new Map(); cs.forEach((c, i) => { const r = find(i); if (!g.has(r)) g.set(r, []); g.get(r).push(i); });
   const comparte = (i, j) => kDs[i].some(k => kDs[j].includes(k)) || (kT[i] && kT[i] === kT[j]);
   const dup = [];
   g.forEach(a => {
     if (a.length < 2) return;
-    const seguro = (a.every(i => kN[i] === kN[a[0]]) && a.every(i => a.some(j => j !== i && comparte(i, j))))
-      || a.every(i => /^\d+$/.test(String(cs[i].codigo)) && String(cs[i].codigo) === String(cs[a[0]].codigo));
+    const seguro = a.every(i => kN[i] === kN[a[0]]) && a.every(i => a.some(j => j !== i && comparte(i, j)));
     dup.push({ids: a.map(i => cs[i].id), seguro});
   });
   const dirs = [];
